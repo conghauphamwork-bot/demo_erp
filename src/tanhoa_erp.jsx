@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -240,6 +240,45 @@ async function persist(key, value) {
   } catch (e) {
     console.error("save failed", key, e);
   }
+}
+
+async function imageFileToDataUrl(file, maxDimension = 1600, quality = 0.82) {
+  if (!file || !file.type || !file.type.startsWith("image/")) {
+    throw new Error("Please choose an image file.");
+  }
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const img = new Image();
+
+      img.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+        const width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+        const height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Your browser could not process this image."));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+
+      img.onerror = () => reject(new Error("The selected image could not be read."));
+      img.src = reader.result;
+    };
+
+    reader.onerror = () => reject(new Error("The selected image could not be read."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function nextId(list, prefix, pad = 4) {
@@ -1293,6 +1332,34 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   const [filterCustomer, setFilterCustomer] = useState("All");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState("kanban");
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInputRef = useRef(null);
+
+  const handleSampleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Please choose an image smaller than 15 MB.");
+      return;
+    }
+
+    setImageUploading(true);
+    try {
+      const dataUrl = await imageFileToDataUrl(file);
+      setEditing((current) => current ? { ...current, image: dataUrl } : current);
+    } catch (err) {
+      console.error("Image upload failed:", err);
+      alert(err?.message || "Could not upload this image.");
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const clearSampleImage = () => {
+    setEditing((current) => current ? { ...current, image: "" } : current);
+  };
 
   const moveStage = (sampleId, newStage) => {
     saveSamples(samples.map((s) => (s.id === sampleId ? { ...s, stage: newStage } : s)));
@@ -1592,8 +1659,46 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
 
             <SectionHeading>Reference & notes</SectionHeading>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
-              <Field label="Sample photo (image URL)">
-                <Input placeholder="https://…" value={editing.image} onChange={set("image")} />
+              <Field label="Sample photo">
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {editing.image ? (
+                    <div style={{ position: "relative", width: "100%", maxWidth: 420 }}>
+                      <img
+                        src={editing.image}
+                        alt={editing.name || "Sample preview"}
+                        style={{ width: "100%", maxHeight: 240, objectFit: "contain", borderRadius: 10, border: `1px solid ${COLORS.line}`, background: COLORS.bg }}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ padding: 16, border: `1px dashed ${COLORS.line}`, borderRadius: 10, color: COLORS.inkSoft, fontSize: 13 }}>
+                      No sample photo selected.
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSampleImageUpload}
+                      style={{ display: "none" }}
+                    />
+                    <Button type="button" variant="subtle" onClick={() => imageInputRef.current?.click()} disabled={imageUploading}>
+                      <ImageIcon size={15} />
+                      {imageUploading ? "Processing…" : editing.image ? "Change photo" : "Upload from computer"}
+                    </Button>
+                    {editing.image && (
+                      <Button type="button" variant="ghost" onClick={clearSampleImage}>
+                        <X size={14} /> Remove
+                      </Button>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>
+                    JPG, PNG, WebP or other browser-supported image • max 15 MB before compression.
+                  </div>
+                </div>
               </Field>
               <Field label="Notes">
                 <TextArea rows={2} value={editing.notes} onChange={set("notes")} />
