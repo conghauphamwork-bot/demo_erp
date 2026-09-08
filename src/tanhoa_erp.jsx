@@ -2030,7 +2030,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
         <div>
           {s.image ? (
-            <img src={s.image} alt={s.name} style={{ width: "100%", borderRadius: 10, border: `1px solid ${COLORS.line}`, marginBottom: 14, objectFit: "cover", maxHeight: 180 }} onError={(e) => { e.target.style.display = "none"; }} />
+            <img   src={s.image}   alt={s.name}   style={{     width: "100%",     aspectRatio: "1 / 1",     borderRadius: 10,     border: `1px solid ${COLORS.line}`,     marginBottom: 14,     objectFit: "contain",     background: COLORS.bg,     display: "block",   }}   onError={(e) => { e.target.style.display = "none"; }} />
           ) : (
             <div style={{ width: "100%", height: 100, borderRadius: 10, border: `1px dashed ${COLORS.line}`, marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.inkSoft, fontSize: 12.5, gap: 6 }}>
               <ImageIcon size={16} /> No photo yet
