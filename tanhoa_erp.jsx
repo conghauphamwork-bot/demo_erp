@@ -976,6 +976,7 @@ function AppInner() {
           min-width: 310px !important;
           width: 330px !important;
           min-height: 0;
+          height: calc(100vh - 250px) !important;
           max-height: calc(100vh - 250px) !important;
           scroll-snap-align: start;
           background: #FAFAFA !important;
@@ -986,6 +987,8 @@ function AppInner() {
         .sample-kanban-column > div:last-child { min-height: 0; }
         .sample-kanban-card {
           min-width: 0;
+          min-height: 176px !important;
+          flex: 0 0 auto !important;
           transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
         }
         .sample-kanban-card:hover {
@@ -1013,6 +1016,10 @@ function AppInner() {
           background: #F8F9FA !important;
         }
         .sample-kanban-column-body {
+          min-height: 0 !important;
+          flex: 1 1 auto !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
           scrollbar-width: thin;
           scrollbar-color: rgba(120,120,120,.22) transparent;
         }
@@ -1067,7 +1074,7 @@ function AppInner() {
           .erp-sidebar nav button { white-space: nowrap; flex: 0 0 auto; }
           .erp-content { height: auto; min-height: calc(100vh - 130px); overflow: visible; padding: 16px; }
           .sample-kanban-board { grid-template-columns: repeat(7, minmax(300px, 320px)); overflow-x: auto !important; width: 100%; min-width: 0; }
-          .sample-kanban-column { min-width: 300px !important; width: 320px !important; max-height: calc(100vh - 210px) !important; }
+          .sample-kanban-column { min-width: 300px !important; width: 320px !important; height: calc(100vh - 210px) !important; max-height: calc(100vh - 210px) !important; }
         }
         /* --- Modern dark/light hybrid UI system --- */
         :root { color-scheme: light; }
@@ -3460,6 +3467,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
         cursor: "grab",
         display: "flex",
         flexDirection: "column",
+        flexShrink: 0,
         gap: 9,
         boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(220,198,169,.10)` : "0 2px 8px rgba(17,17,17,.035)",
         overflow: "hidden",
