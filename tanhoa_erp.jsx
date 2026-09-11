@@ -2495,8 +2495,18 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
           masters: materialLists,
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "AI analysis failed.");
+      const contentType = response.headers.get("content-type") || "";
+      const raw = await response.text();
+      let data = null;
+      if (contentType.includes("application/json")) {
+        try { data = JSON.parse(raw); } catch (_) { /* handled below */ }
+      }
+      if (!response.ok) {
+        const serverMessage = data?.error || raw?.replace(/\s+/g, " ").trim();
+        throw new Error(serverMessage || `AI analysis failed (HTTP ${response.status}).`);
+      }
+      if (!data) throw new Error("AI endpoint returned an invalid response. Please check the Vercel Function deployment.");
+      if (!data.result) throw new Error(data.error || "AI returned no extraction result.");
       setResult(data.result);
     } catch (e) {
       setError(e?.message || String(e));
