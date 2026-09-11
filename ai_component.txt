@@ -1,0 +1,108 @@
+function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [descriptionText, setDescriptionText] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [createMissing, setCreateMissing] = useState(false);
+
+  const readFile = (f) => {
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setError("Please choose an image file."); return; }
+    if (f.size > 12 * 1024 * 1024) { setError("Please choose an image smaller than 12 MB."); return; }
+    setError(""); setFile(f); setResult(null);
+    const reader = new FileReader();
+    reader.onload = () => setPreview(String(reader.result || ""));
+    reader.readAsDataURL(f);
+  };
+
+  const analyze = async () => {
+    if (!file && !descriptionText.trim()) return;
+    setLoading(true); setError("");
+    try {
+      let imageBase64 = "";
+      if (preview) imageBase64 = preview.split(",")[1] || "";
+      const response = await fetch("/api/parse-description", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          mimeType: file?.type || "image/jpeg",
+          descriptionText,
+          masters: materialLists,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "AI analysis failed.");
+      setResult(data.result);
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally { setLoading(false); }
+  };
+
+  const rows = [
+    ["Sample name", "sampleName"], ["Product type", "productType"], ["Qty", "qty"],
+    ["Width", "width"], ["Depth", "depth"], ["Height", "height"], ["Arm height", "armHeight"], ["Seat height", "seatHeight"],
+    ["Main material", "mainMaterial"], ["Finish / color", "finishColor"], ["Wood treatment", "woodSurfaceTreatment"],
+    ["Fabric type", "fabricType"], ["Fabric color", "fabricColor"], ["Rope type", "ropeType"], ["Rope diameter", "ropeDiameter"], ["Rope color", "ropeColor"],
+    ["Metal name", "metalName"], ["Metal color", "metalColor"], ["Cemboard / stone", "cemboardColor"], ["Hardware", "hardware"], ["Construction", "construction"], ["Revision", "revision"], ["Packing", "packing"], ["Notes", "notes"],
+  ];
+
+  const confidence = result?.confidence || {};
+  const editResult = (key, value) => setResult((r) => ({ ...r, [key]: value }));
+  const tone = (value) => {
+    const n = Number(value);
+    return n >= 0.9 ? { bg: COLORS.greenSoft, fg: COLORS.green } : n >= 0.75 ? { bg: COLORS.amberSoft, fg: COLORS.wood } : { bg: COLORS.redSoft, fg: COLORS.red };
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1600, padding: 18 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1120px, 100%)", maxHeight: "92vh", background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 30px 100px rgba(0,0,0,.28)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div><div style={{ fontSize: 20, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={19} color={COLORS.wood} /> AI from Description</div><div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 3 }}>Upload a product-description image. AI extracts fields; nothing is saved until you confirm.</div></div>
+          <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
+        </div>
+        <div style={{ padding: 18, overflowY: "auto" }}>
+          {!result ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div>
+                <label style={{ display: "flex", minHeight: 280, border: `2px dashed ${COLORS.line}`, borderRadius: 14, alignItems: "center", justifyContent: "center", cursor: "pointer", background: COLORS.bg, overflow: "hidden" }}>
+                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { readFile(e.target.files?.[0]); e.target.value = ""; }} />
+                  {preview ? <img src={preview} alt="Description preview" style={{ width: "100%", height: 280, objectFit: "contain" }} /> : <div style={{ textAlign: "center", color: COLORS.inkSoft }}><ImageIcon size={34} /><div style={{ fontWeight: 700, marginTop: 10 }}>Upload description image</div><div style={{ fontSize: 12, marginTop: 4 }}>PNG / JPG / WebP · max 12 MB</div></div>}
+                </label>
+                <div style={{ marginTop: 10, fontSize: 11.5, color: COLORS.inkSoft }}>Best results: upload a clear screenshot/photo of the customer's Product Description table or specification sheet.</div>
+              </div>
+              <div>
+                <Field label="Optional description text — useful if the image is low quality">
+                  <textarea value={descriptionText} onChange={(e) => setDescriptionText(e.target.value)} placeholder="Paste the product description here…" style={{ ...inputStyle, minHeight: 280, resize: "vertical" }} />
+                </Field>
+                {error && <div style={{ marginTop: 12, padding: 10, borderRadius: 9, background: COLORS.redSoft, color: COLORS.red, fontSize: 12 }}>{error}</div>}
+                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#F7F7F7", fontSize: 12, lineHeight: 1.6 }}><b>What AI will extract</b><br />Name · Product type · Qty · Dimensions · Materials · Finish / Color · Hardware · Construction · Packing · Revision.</div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>Double-check AI extraction</div><div style={{ fontSize: 12, color: COLORS.inkSoft }}>Edit any value before applying it to the Sample form.</div></div><Button small variant="subtle" onClick={() => setResult(null)}>← Analyze again</Button></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {rows.map(([label, key]) => {
+                  const value = result[key] ?? "";
+                  const groupConfidence = key === "sampleName" || key === "productType" ? confidence[key] : ["width","depth","height","armHeight","seatHeight"].includes(key) ? confidence.dimensions : ["mainMaterial","finishColor","woodSurfaceTreatment","fabricType","fabricColor","ropeType","ropeDiameter","ropeColor","cemboardColor"].includes(key) ? confidence.materials : confidence.hardware;
+                  const badge = groupConfidence == null ? null : tone(groupConfidence);
+                  return <div key={key} style={{ display: "grid", gridTemplateColumns: "145px 1fr auto", gap: 8, alignItems: "center", padding: "8px 10px", border: `1px solid ${COLORS.line}`, borderRadius: 9 }}><div style={{ fontSize: 12, fontWeight: 650 }}>{label}</div><Input value={value} onChange={(e) => editResult(key, e.target.value)} /><span style={{ minWidth: 48, textAlign: "center", fontSize: 10.5, padding: "4px 6px", borderRadius: 999, background: badge?.bg || COLORS.bg, color: badge?.fg || COLORS.inkSoft }}>{badge ? `${Math.round(Number(groupConfidence) * 100)}%` : "—"}</span></div>;
+                })}
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 12.5, padding: 10, background: COLORS.amberSoft, borderRadius: 9 }}><input type="checkbox" checked={createMissing} onChange={(e) => setCreateMissing(e.target.checked)} /> Create missing material/master values automatically when applying. Leave unchecked to keep unknown values for manual review.</label>
+              {result.sourceText && <details style={{ marginTop: 12 }}><summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700 }}>View source text extracted by AI</summary><pre style={{ whiteSpace: "pre-wrap", fontSize: 11.5, background: COLORS.bg, padding: 10, borderRadius: 8 }}>{result.sourceText}</pre></details>}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "14px 22px", borderTop: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          {!result ? <Button onClick={analyze} disabled={loading || (!file && !descriptionText.trim())}>{loading ? "Analyzing…" : <><Sparkles size={14} /> Analyze with AI</>}</Button> : <Button onClick={() => onApply(result, createMissing)}><CheckCircle2 size={14} /> Apply to Sample</Button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
