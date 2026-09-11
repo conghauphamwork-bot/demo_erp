@@ -32,6 +32,8 @@ async function loadPublicSample(sampleId) {
    Data persists in Supabase Postgres. Images currently use the existing app image URL/data model.
 --------------------------------------------------------- */
 
+// Tân Hòa brand theme — primary: #DCC6A9 (warm beige).
+// Semantic status colors (success/error/info) remain distinct for usability.
 const COLORS = {
   bg: "#F6F7F9",
   panel: "#FFFFFF",
@@ -40,12 +42,12 @@ const COLORS = {
   line: "#E5E7EB",
   sidebar: "linear-gradient(145deg, #1A1918 0%, #211D1A 58%, #3D2218 100%)",
   sidebarSoft: "#888888",
-  wood: "#FF5500",
-  woodDark: "#D94700",
+  wood: "#DCC6A9",
+  woodDark: "#9E876B",
   teal: "#5E6B63",
   tealSoft: "#EEF1EF",
-  amber: "#FF8A3D",
-  amberSoft: "#FFF0E8",
+  amber: "#C9B395",
+  amberSoft: "#F4EEE5",
   red: "#D94B4B",
   redSoft: "#FDEBEC",
   green: "#4C9A68",
@@ -196,7 +198,7 @@ const SAMPLE_STAGE_THEME = {
   "Quality Check":         { bg: "#FCECE1", head: "#A94D20", border: "#E8BFA7", accent: "#DF8B5C", soft: "#F7D8C6" },
   "Customer Correction":   { bg: "#FBE2D3", head: "#B64212", border: "#E6AB8B", accent: "#D96F3A", soft: "#F6CDB9" },
   "Packaging":             { bg: "#F9D5BC", head: "#BD410A", border: "#DF9670", accent: "#D95D20", soft: "#F4BFA0" },
-  "Shipping":              { bg: "#F7C19D", head: "#A83200", border: "#D97843", accent: "#FF5500", soft: "#F3A878" },
+  "Shipping":              { bg: "#F7C19D", head: "#806A51", border: "#D97843", accent: "#DCC6A9", soft: "#F3A878" },
 };
 
 const CONSTRUCTION_OPTIONS = ["K/D", "Full Assembly"];
@@ -998,7 +1000,7 @@ function AppInner() {
           cursor: pointer;
         }
         .kanban-icon-button:hover {
-          color: #FF5500; border-color: #FFB88F; background: #FFF8F4;
+          color: #DCC6A9; border-color: #E2D3BF; background: #F8F4EE;
           box-shadow: none !important;
         }
         .kanban-column-menu {
@@ -1069,16 +1071,16 @@ function AppInner() {
         }
         /* --- Modern dark/light hybrid UI system --- */
         :root { color-scheme: light; }
-        ::selection { background: rgba(255,85,0,.18); }
+        ::selection { background: rgba(220,198,169,.18); }
         .erp-sidebar nav button { transition: background .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
         .erp-sidebar nav button:hover { color: #fff !important; background: rgba(255,255,255,.055) !important; border-color: rgba(255,255,255,.08) !important; transform: translateX(2px); }
-        .erp-sidebar nav button[style*="linear-gradient"] { box-shadow: 0 0 22px rgba(255,85,0,.12), inset 0 1px 0 rgba(255,255,255,.06); }
+        .erp-sidebar nav button[style*="linear-gradient"] { box-shadow: 0 0 22px rgba(220,198,169,.12), inset 0 1px 0 rgba(255,255,255,.06); }
         .erp-sidebar > div:first-child { letter-spacing: -.35px; }
         button { transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease, opacity .16s ease; }
         button:not(:disabled):hover { box-shadow: 0 5px 16px rgba(17,17,17,.07); }
         button:not(:disabled):active { transform: translateY(1px); }
         input, select, textarea { border-color: #E5E7EB !important; border-radius: 12px !important; background: #fff !important; }
-        input:focus, select:focus, textarea:focus { border-color: #FF6B00 !important; box-shadow: 0 0 0 3px rgba(255,107,0,.10) !important; }
+        input:focus, select:focus, textarea:focus { border-color: #B79F80 !important; box-shadow: 0 0 0 3px rgba(183,159,128,.10) !important; }
         div[style*="border-radius: 12px"], div[style*="border-radius: 14px"], div[style*="border-radius: 16px"], div[style*="border-radius: 18px"] { border-radius: 14px !important; }
         table { border-color: #E5E7EB; }
         th { font-weight: 650 !important; color: #555 !important; }
@@ -1104,9 +1106,9 @@ function AppInner() {
                 onClick={() => setView(n.key)}
                 style={{
                   textAlign: "left",
-                  background: view === n.key ? "linear-gradient(135deg, rgba(255,85,0,.22), rgba(255,107,0,.10))" : "transparent",
+                  background: view === n.key ? "linear-gradient(135deg, rgba(220,198,169,.22), rgba(183,159,128,.10))" : "transparent",
                   color: view === n.key ? "#fff" : COLORS.sidebarSoft,
-                  border: view === n.key ? "1px solid rgba(255,107,0,.38)" : "1px solid transparent",
+                  border: view === n.key ? "1px solid rgba(183,159,128,.38)" : "1px solid transparent",
                   borderRadius: 12,
                   padding: "9px 12px",
                   fontSize: 14,
@@ -2444,7 +2446,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
             <Panel title="Columns & filters" action={<div style={{ display: "flex", gap: 6 }}><Button small variant="subtle" onClick={selectAll}>Select all</Button><Button small variant="ghost" onClick={clearAll}>Clear</Button></div>}>
               <Input value={fieldSearch} onChange={(e) => setFieldSearch(e.target.value)} placeholder="Search fields…" style={{ marginBottom: 10 }} />
               <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 9, background: "#F5F1E9", color: COLORS.inkSoft, fontSize: 11.5 }}>Tip: select <b>Image (embedded)</b> for the sample photo or <b>QR Code</b> to place a scannable QR image directly into the Excel file.</div>
-              <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#FFF7F0", border: `1px solid ${COLORS.orange || "#FF6B00"}` }}>
+              <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F7F2EA", border: `1px solid ${COLORS.orange || "#B79F80"}` }}>
                 {(() => { const field = fieldMap.get("qrCode"); const checked = selectedKeys.includes("qrCode"); return <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={checked} onChange={() => toggleField("qrCode")} />
                   <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this sample's public passport.</div></div>
@@ -2813,7 +2815,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
 
       {showForm && (
         <Panel title={editing.id ? `Edit ${editing.id}` : "New sample"}>
-          <div style={{ marginBottom: 14, padding: 14, borderRadius: 12, background: "linear-gradient(135deg,#FFF7F0,#FFFDFB)", border: `1px solid #F1D4BF`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div style={{ marginBottom: 14, padding: 14, borderRadius: 12, background: "linear-gradient(135deg,#F7F2EA,#FFFDFB)", border: `1px solid #F1D4BF`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <div><div style={{ fontWeight: 750, fontSize: 14 }}>AI from Description</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>Upload a product-description image and let AI pre-fill the Sample fields. You review everything before saving.</div></div>
             <Button type="button" onClick={() => setShowAIDescription(true)}><Sparkles size={15} /> Analyze description</Button>
           </div>
@@ -3339,10 +3341,10 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
           margin: "0 2px 12px", padding: "9px 12px", borderRadius: 13,
-          background: "#FFF7F2", border: "1px solid #FFD8C5", boxShadow: "0 4px 14px rgba(255,85,0,.06)"
+          background: "#FFF7F2", border: "1px solid #FFD8C5", boxShadow: "0 4px 14px rgba(220,198,169,.06)"
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#FF5500", color: "#fff", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#DCC6A9", color: "#fff", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: "#222" }}>samples selected</div>
               <div style={{ fontSize: 11, color: "#8A6A5A" }}>Drag any selected card to another column to move them together.</div>
@@ -3374,10 +3376,10 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               onDrop={(e) => handleDrop(e, stage)}
               className="sample-kanban-column"
               style={{
-                background: isOver ? "#FFF8F4" : "#FAFAFA",
-                border: `1px solid ${isOver ? "#FFB88F" : "#E2E5E8"}`,
+                background: isOver ? "#F8F4EE" : "#FAFAFA",
+                border: `1px solid ${isOver ? "#E2D3BF" : "#E2E5E8"}`,
                 borderRadius: 14, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
-                boxShadow: isOver ? "0 0 0 2px rgba(255,85,0,.10), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
+                boxShadow: isOver ? "0 0 0 2px rgba(220,198,169,.10), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
               }}
             >
               <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #E5E7EA", display: "flex", flexDirection: "column", gap: 10, background: "#FFFFFF" }}>
@@ -3392,7 +3394,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
                   <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#555C64", background: "#F4F5F6", borderRadius: 999, border: "1px solid #E0E3E7", fontWeight: 800 }}>{cards.length}</span>
                 </div>
                 <div style={{ height: 3, borderRadius: 99, background: "#E7E9EC", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#FF5500" : "#C9CDD2" }} />
+                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#DCC6A9" : "#C9CDD2" }} />
                 </div>
               </div>
 
@@ -3451,7 +3453,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
       className="sample-kanban-card"
       style={{
         position: "relative",
-        background: selected ? "#FFF9F5" : "rgba(255,255,255,.94)",
+        background: selected ? "#F8F5EF" : "rgba(255,255,255,.94)",
         border: `1px solid ${selected ? theme.accent : "rgba(17,17,17,.075)"}`,
         borderRadius: 14,
         padding: 11,
@@ -3459,12 +3461,12 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
         display: "flex",
         flexDirection: "column",
         gap: 9,
-        boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(255,85,0,.10)` : "0 2px 8px rgba(17,17,17,.035)",
+        boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(220,198,169,.10)` : "0 2px 8px rgba(17,17,17,.035)",
         overflow: "hidden",
         opacity: isDragging ? 0.58 : 1,
       }}
     >
-      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#FF5500" : "#E4E7EA" }} />
+      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#DCC6A9" : "#E4E7EA" }} />
       <button
         type="button"
         aria-label={selected ? `Deselect ${s.name || s.id}` : `Select ${s.name || s.id}`}
@@ -3505,7 +3507,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <span className="kanban-pill" style={{ color: "#4F565E", background: "#F1F3F5", border: "1px solid #E1E4E8" }}>{s.productTypeName || s.productType || "Sample"}</span>
         <span className="kanban-pill" style={{ color: "#686D73", background: "#F3F4F6" }}>Qty {s.quantity ?? s.qty ?? 1}</span>
-        {s.priority && <span className="kanban-pill" style={{ color: s.priority === "Urgent" ? "#A83200" : "#686D73", background: s.priority === "Urgent" ? "#FCE2D7" : "#F3F4F6" }}>{s.priority}</span>}
+        {s.priority && <span className="kanban-pill" style={{ color: s.priority === "Urgent" ? "#806A51" : "#686D73", background: s.priority === "Urgent" ? "#FCE2D7" : "#F3F4F6" }}>{s.priority}</span>}
       </div>
 
       {materialReadiness && materialReadiness.total > 0 && (() => {
@@ -4061,11 +4063,11 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
   const typeStyle = (e) => {
     if (e.overdue) return { bg: "#FFF0EE", border: "#FFB7AE", text: "#B53B2D", accent: "#D94B4B", label: "OVERDUE" };
     if (e.status === "Done" || e.status === "Completed") return { bg: "#EAF6EE", border: "#B8DFC4", text: "#32724A", accent: "#4C9A68", label: "DONE" };
-    if (e.type === "material") return { bg: "#FFF6E9", border: "#F4D3A7", text: "#9A5A2F", accent: "#FF8A3D", label: "MATERIAL" };
-    if (e.type === "sample") return { bg: "#FFF0E8", border: "#FFC6A6", text: "#C94700", accent: "#FF5500", label: "SAMPLE" };
+    if (e.type === "material") return { bg: "#F5EFE6", border: "#F4D3A7", text: "#9A5A2F", accent: "#C9B395", label: "MATERIAL" };
+    if (e.type === "sample") return { bg: "#F4EEE5", border: "#E4D6C4", text: "#8F755B", accent: "#DCC6A9", label: "SAMPLE" };
     if (e.taskType === "Daily") return { bg: "#EEF2FF", border: "#AFC0FF", text: "#3159C7", accent: "#4267E8", label: "DAILY" };
     if (e.taskType === "Sample Test") return { bg: "#F3ECFF", border: "#CBB3FF", text: "#7040B5", accent: "#8B5CF6", label: "SAMPLE TEST" };
-    return { bg: "#FFF0E8", border: "#FFB98F", text: "#C94700", accent: "#FF5500", label: "FOLLOW-UP" };
+    return { bg: "#F4EEE5", border: "#FFB98F", text: "#8F755B", accent: "#DCC6A9", label: "FOLLOW-UP" };
   };
 
   const persistEventDate = (event, newDate) => {
@@ -4235,7 +4237,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       </div>
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: COLORS.inkSoft }}>
-        {[['#FF5500','Sample'],['#FF8A3D','Material'],['#4267E8','Daily'],['#8B5CF6','Sample Test'],['#D94B4B','Overdue'],['#4C9A68','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
+        {[['#DCC6A9','Sample'],['#C9B395','Material'],['#4267E8','Daily'],['#8B5CF6','Sample Test'],['#D94B4B','Overdue'],['#4C9A68','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
       </div>
 
       {view === "week" ? (
@@ -4249,7 +4251,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
               <div style={{ padding: 12, borderBottom: `1px solid ${COLORS.line}` }}><div style={{ fontSize: 12.5, fontWeight: 800 }}>Follow-up queue</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 3 }}>Items requiring attention</div><div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 13 }}>{overdue.slice(0, 5).map((e) => <button key={e.id} onClick={() => openEdit(e)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", fontSize: 10.5, display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.red }} /><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.label}</span></button>)}{!overdue.length && <div style={{ fontSize: 10.5, color: COLORS.green }}>No overdue items.</div>}</div></div>
               <div style={{ padding: 12 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: ".06em" }}>How it works</div><div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 10.2, color: COLORS.inkSoft }}><div>↕ Drag a card to another day</div><div>✎ Click a card to edit</div><div>✓ Mark work as Done</div></div></div>
             </div>
-            {weekDays.map((d) => { const dayEvents = eventsByDate[d.iso] || []; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: 7, borderRight: `1px solid ${COLORS.line}`, background: dragOverDate === d.iso ? "#FFF4EC" : (d.iso === today ? "#FFF9F5" : "#FFFFFF"), minWidth: 0, transition: "background .15s ease" }}><div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 430 }}>{dayEvents.slice(0, 8).map((e) => <EventCard key={e.id} e={e} compact />)}{dayEvents.length > 8 && <button onClick={() => setSelectedEvent({ date: d.iso, label: `${dayEvents.length - 8} more items`, type: "more", more: dayEvents.slice(8) })} style={{ border: "none", background: "transparent", color: COLORS.wood, fontWeight: 800, fontSize: 10.5, cursor: "pointer", padding: 4 }}>+ {dayEvents.length - 8} more</button>}{!dayEvents.length && <div style={{ flex: 1, minHeight: 120, border: dragOverDate === d.iso ? `2px dashed ${COLORS.wood}` : "1px dashed #E9EAED", borderRadius: 10, display: "grid", placeItems: "center", color: dragOverDate === d.iso ? COLORS.wood : "#B8BCC2", fontSize: 10.5 }}>{dragOverDate === d.iso ? "Drop here" : "No plan"}</div>}</div></div>; })}
+            {weekDays.map((d) => { const dayEvents = eventsByDate[d.iso] || []; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: 7, borderRight: `1px solid ${COLORS.line}`, background: dragOverDate === d.iso ? "#F6F1E9" : (d.iso === today ? "#F8F5EF" : "#FFFFFF"), minWidth: 0, transition: "background .15s ease" }}><div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 430 }}>{dayEvents.slice(0, 8).map((e) => <EventCard key={e.id} e={e} compact />)}{dayEvents.length > 8 && <button onClick={() => setSelectedEvent({ date: d.iso, label: `${dayEvents.length - 8} more items`, type: "more", more: dayEvents.slice(8) })} style={{ border: "none", background: "transparent", color: COLORS.wood, fontWeight: 800, fontSize: 10.5, cursor: "pointer", padding: 4 }}>+ {dayEvents.length - 8} more</button>}{!dayEvents.length && <div style={{ flex: 1, minHeight: 120, border: dragOverDate === d.iso ? `2px dashed ${COLORS.wood}` : "1px dashed #E9EAED", borderRadius: 10, display: "grid", placeItems: "center", color: dragOverDate === d.iso ? COLORS.wood : "#B8BCC2", fontSize: 10.5 }}>{dragOverDate === d.iso ? "Drop here" : "No plan"}</div>}</div></div>; })}
           </div>
         </div>
       ) : (
