@@ -3,24 +3,84 @@ const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 function jsonResponse(status, body) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
   });
 }
 
+async function readJsonSafe(response) {
+  const text = await response.text();
+  if (!text) return { data: null, text: "" };
+  try {
+    return { data: JSON.parse(text), text };
+  } catch (_) {
+    return { data: null, text };
+  }
+}
+
+function extractJson(text) {
+  if (!text) throw new Error("AI returned an empty response.");
+
+  const cleaned = String(text)
+    .replace(/^```json\\s*/i, "")
+    .replace(/^```\\s*/i, "")
+    .replace(/\\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (_) {
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first >= 0 && last > first) {
+      try {
+        return JSON.parse(cleaned.slice(first, last + 1));
+      } catch (_) {
+        // Fall through to the useful error below.
+      }
+    }
+  }
+
+  throw new Error("AI returned invalid JSON. Please try again or add the product description text.");
+}
+
 export default async function handler(req) {
-  if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return jsonResponse(405, { error: "Method not allowed" });
+  }
+
   const key = process.env.GEMINI_API_KEY;
-  if (!key) return jsonResponse(500, { error: "GEMINI_API_KEY is not configured in Vercel." });
+  if (!key) {
+    return jsonResponse(500, {
+      error: "GEMINI_API_KEY is not configured in Vercel Environment Variables.",
+    });
+  }
 
   try {
     const body = await req.json();
-    const { imageBase64, mimeType = "image/jpeg", descriptionText = "", masters = {} } = body || {};
-    if (!imageBase64 && !descriptionText.trim()) return jsonResponse(400, { error: "Provide an image or description text." });
+    const {
+      imageBase64,
+      mimeType = "image/jpeg",
+      descriptionText = "",
+      masters = {},
+    } = body || {};
 
-    const compactMasters = Object.fromEntries(Object.entries(masters).map(([k, list]) => [
-      k,
-      (Array.isArray(list) ? list : []).slice(0, 300).map(x => ({ id: x.id, code: x.code || "", name: x.name || x.Main_Material_Name || x.Main_Material_Name || "" }))
-    ]));
+    if (!imageBase64 && !String(descriptionText).trim()) {
+      return jsonResponse(400, { error: "Provide an image or description text." });
+    }
+
+    const compactMasters = Object.fromEntries(
+      Object.entries(masters).map(([k, list]) => [
+        k,
+        (Array.isArray(list) ? list : []).slice(0, 300).map((x) => ({
+          id: x.id,
+          code: x.code || "",
+          name: x.name || x.Main_Material_Name || "",
+        })),
+      ])
+    );
 
     const prompt = `You are a furniture product-description extraction assistant for Tân Hòa Outdoor Furniture ERP.
 Read the supplied product-description image/text and return ONLY valid JSON. Do not invent values.
@@ -68,30 +128,61 @@ Available ERP master values for matching context:
 ${JSON.stringify(compactMasters)}
 
 Description text, if supplied:
-${descriptionText.trim()}`;
+${String(descriptionText).trim()}`;
 
     const parts = [{ text: prompt }];
-    if (imageBase64) parts.push({ inline_data: { mime_type: mimeType, data: imageBase64 } });
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) return jsonResponse(response.status, { error: data?.error?.message || "Gemini request failed." });
-    const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-    if (!text) return jsonResponse(502, { error: "AI returned an empty response." });
-    let parsed;
-    try { parsed = JSON.parse(text); } catch (_) {
-      const match = text.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("AI returned invalid JSON.");
-      parsed = JSON.parse(match[0]);
+    if (imageBase64) {
+      parts.push({
+        inline_data: {
+          mime_type: mimeType,
+          data: imageBase64,
+        },
+      });
     }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": key,
+        },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: "application/json",
+          },
+        }),
+      }
+    );
+
+    const { data, text: rawResponse } = await readJsonSafe(response);
+
+    if (!response.ok) {
+      const message =
+        data?.error?.message ||
+        rawResponse?.replace(/\\s+/g, " ").trim() ||
+        `Gemini request failed (HTTP ${response.status}).`;
+      return jsonResponse(response.status, { error: message });
+    }
+
+    const text =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || "")
+        .join("") || "";
+
+    if (!text) {
+      const blockReason = data?.promptFeedback?.blockReason;
+      return jsonResponse(502, {
+        error: blockReason
+          ? `AI did not return an answer. Prompt was blocked: ${blockReason}.`
+          : "AI returned an empty response.",
+      });
+    }
+
+    const parsed = extractJson(text);
     return jsonResponse(200, { result: parsed, model: MODEL });
   } catch (error) {
     return jsonResponse(500, { error: error?.message || String(error) });
