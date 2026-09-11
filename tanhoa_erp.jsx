@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import QRCode from "qrcode";
-import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles } from "lucide-react";
+import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil } from "lucide-react";
 import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
@@ -956,25 +956,31 @@ function AppInner() {
         .erp-page { width: 100%; max-width: 1680px; margin: 0 auto; }
         .sample-kanban-board {
           display: grid !important;
-          grid-template-columns: repeat(7, minmax(0, 1fr));
-          gap: 8px;
+          grid-template-columns: repeat(7, minmax(310px, 330px));
+          gap: 12px;
           width: 100%;
           min-width: 0;
-          overflow-x: hidden;
+          overflow-x: auto !important;
           overflow-y: hidden;
-          padding: 0 2px 12px;
+          padding: 2px 4px 16px 2px;
           scroll-snap-type: x proximity;
-          scrollbar-width: thin;
-          scrollbar-color: #D8DADD transparent;
+          scrollbar-width: auto;
+          scrollbar-color: #B9BDC3 transparent;
         }
+        .sample-kanban-board::-webkit-scrollbar { height: 10px; }
+        .sample-kanban-board::-webkit-scrollbar-track { background: #EEF0F2; border-radius: 99px; }
+        .sample-kanban-board::-webkit-scrollbar-thumb { background: #B9BDC3; border-radius: 99px; }
         .sample-kanban-column {
-          min-width: 0 !important;
-          width: auto !important;
+          min-width: 310px !important;
+          width: 330px !important;
           min-height: 0;
           max-height: calc(100vh - 250px) !important;
           scroll-snap-align: start;
-          box-shadow: 0 2px 10px rgba(17,17,17,.025);
+          background: #FAFAFA !important;
+          border: 1px solid #E2E5E8 !important;
+          box-shadow: 0 2px 8px rgba(17,17,17,.035) !important;
         }
+        .sample-kanban-column:hover { box-shadow: 0 5px 16px rgba(17,17,17,.06) !important; }
         .sample-kanban-column > div:last-child { min-height: 0; }
         .sample-kanban-card {
           min-width: 0;
@@ -982,7 +988,22 @@ function AppInner() {
         }
         .sample-kanban-card:hover {
           transform: translateY(-1px);
-          box-shadow: 0 7px 18px rgba(17,17,17,.07) !important;
+          box-shadow: 0 8px 20px rgba(17,17,17,.07) !important;
+          border-color: #D5D9DE !important;
+        }
+        .kanban-icon-button {
+          width: 30px; height: 30px; padding: 0; border-radius: 8px;
+          border: 1px solid #E1E4E8; background: #fff; color: #68707A;
+          display: inline-flex; align-items: center; justify-content: center;
+          cursor: pointer;
+        }
+        .kanban-icon-button:hover {
+          color: #FF5500; border-color: #FFB88F; background: #FFF8F4;
+          box-shadow: none !important;
+        }
+        .kanban-column-menu {
+          width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+          border: 1px solid #E2E5E8; border-radius: 8px; background: #fff; color: #737A82;
         }
         .sample-kanban-card select {
           min-height: 31px;
@@ -1020,24 +1041,22 @@ function AppInner() {
           white-space: nowrap;
         }
         @media (min-width: 1281px) {
-          .sample-kanban-column-body { padding: 7px !important; gap: 7px !important; }
-          .sample-kanban-card { padding: 8px !important; gap: 7px !important; border-radius: 11px !important; }
-          .sample-kanban-card > div:nth-child(2) { gap: 6px !important; }
-          .sample-kanban-card > div:nth-child(2) > div:first-child { width: 52px !important; height: 52px !important; margin-left: 21px !important; border-radius: 8px !important; }
-          .sample-kanban-column > div:first-child { padding: 10px 9px 9px !important; gap: 7px !important; }
-          .sample-kanban-column > div:first-child > div:first-child { gap: 6px !important; }
-          .sample-kanban-column > div:first-child > div:first-child > div > div:first-child { font-size: 11px !important; white-space: normal !important; line-height: 1.15 !important; }
-          .sample-kanban-column > div:first-child > div:first-child > span { min-width: 22px !important; height: 22px !important; font-size: 9px !important; }
+          .sample-kanban-column-body { padding: 9px !important; gap: 9px !important; }
+          .sample-kanban-card { padding: 11px !important; gap: 9px !important; border-radius: 12px !important; }
+          .sample-kanban-card > div:nth-child(2) { gap: 10px !important; }
+          .sample-kanban-card > div:nth-child(2) > div:first-child { width: 76px !important; height: 76px !important; margin-left: 28px !important; border-radius: 10px !important; }
+          .sample-kanban-column > div:first-child { padding: 13px 13px 12px !important; gap: 9px !important; }
+          .sample-kanban-column > div:first-child > div:first-child { gap: 8px !important; }
+          .sample-kanban-column > div:first-child > div:first-child > div > div:first-child { font-size: 13px !important; white-space: nowrap !important; line-height: 1.2 !important; }
+          .sample-kanban-column > div:first-child > div:first-child > span { min-width: 27px !important; height: 27px !important; font-size: 10px !important; }
         }
         @media (max-width: 1280px) {
           .erp-sidebar { width: 216px; flex-basis: 216px; }
           .sample-kanban-board {
-            grid-template-columns: repeat(7, minmax(178px, 1fr));
-            width: max-content;
-            min-width: 100%;
-            overflow-x: auto;
+            grid-template-columns: repeat(7, minmax(300px, 320px));
+            overflow-x: auto !important;
           }
-          .sample-kanban-column { min-width: 178px !important; width: 178px !important; }
+          .sample-kanban-column { min-width: 300px !important; width: 320px !important; }
         }
         @media (max-width: 820px) {
           .erp-shell { display: block; overflow: visible; }
@@ -1045,8 +1064,8 @@ function AppInner() {
           .erp-sidebar nav { flex-direction: row !important; overflow-x: auto; gap: 4px !important; padding-bottom: 2px; }
           .erp-sidebar nav button { white-space: nowrap; flex: 0 0 auto; }
           .erp-content { height: auto; min-height: calc(100vh - 130px); overflow: visible; padding: 16px; }
-          .sample-kanban-board { grid-template-columns: repeat(7, minmax(230px, 1fr)); overflow-x: auto !important; width: max-content; min-width: 100%; }
-          .sample-kanban-column { min-width: 230px !important; width: 230px !important; max-height: calc(100vh - 210px) !important; }
+          .sample-kanban-board { grid-template-columns: repeat(7, minmax(300px, 320px)); overflow-x: auto !important; width: 100%; min-width: 0; }
+          .sample-kanban-column { min-width: 300px !important; width: 320px !important; max-height: calc(100vh - 210px) !important; }
         }
         /* --- Modern dark/light hybrid UI system --- */
         :root { color-scheme: light; }
@@ -3355,25 +3374,25 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               onDrop={(e) => handleDrop(e, stage)}
               className="sample-kanban-column"
               style={{
-                background: isOver ? theme.soft : theme.bg,
-                border: `1px solid ${isOver ? theme.accent : theme.border}`,
-                borderRadius: 16, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
-                boxShadow: isOver ? `0 0 0 3px ${theme.soft}, 0 10px 28px rgba(17,17,17,.07)` : "0 2px 10px rgba(17,17,17,.025)",
+                background: isOver ? "#FFF8F4" : "#FAFAFA",
+                border: `1px solid ${isOver ? "#FFB88F" : "#E2E5E8"}`,
+                borderRadius: 14, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
+                boxShadow: isOver ? "0 0 0 2px rgba(255,85,0,.10), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
               }}
             >
-              <div style={{ padding: "14px 14px 12px", borderBottom: `1px solid ${theme.border}`, display: "flex", flexDirection: "column", gap: 10, background: `linear-gradient(180deg, rgba(255,255,255,.76), rgba(255,255,255,.16))` }}>
+              <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #E5E7EA", display: "flex", flexDirection: "column", gap: 10, background: "#FFFFFF" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <span style={{ width: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, background: theme.soft, color: theme.head, fontSize: 10.5, fontWeight: 800, flexShrink: 0, border: `1px solid ${theme.border}` }}>{String(stageIndex + 1).padStart(2, "0")}</span>
+                    <span style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, background: "#F1F3F5", color: "#4D545C", fontSize: 10.5, fontWeight: 800, flexShrink: 0, border: "1px solid #E0E3E7" }}>{String(stageIndex + 1).padStart(2, "0")}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: theme.head, lineHeight: 1.2, whiteSpace: "nowrap" }}>{stage}</div>
-                      <div style={{ fontSize: 10.5, color: theme.head, opacity: .65, marginTop: 3 }}>Step {stageIndex + 1} · {Math.round(completion * 100)}% flow</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "#20252B", lineHeight: 1.2, whiteSpace: "nowrap" }}>{stage}</div>
+                      <div style={{ fontSize: 10.5, color: "#7A8189", marginTop: 3 }}>Step {stageIndex + 1} · {Math.round(completion * 100)}% flow</div>
                     </div>
                   </div>
-                  <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: theme.head, background: "rgba(255,255,255,.88)", borderRadius: 999, border: `1px solid ${theme.border}`, fontWeight: 800 }}>{cards.length}</span>
+                  <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#555C64", background: "#F4F5F6", borderRadius: 999, border: "1px solid #E0E3E7", fontWeight: 800 }}>{cards.length}</span>
                 </div>
-                <div style={{ height: 3, borderRadius: 99, background: "rgba(255,255,255,.72)", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: theme.accent }} />
+                <div style={{ height: 3, borderRadius: 99, background: "#E7E9EC", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#FF5500" : "#C9CDD2" }} />
                 </div>
               </div>
 
@@ -3408,7 +3427,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               <button
                 type="button"
                 onClick={() => onAddSample?.(stage)}
-                style={{ margin: "0 10px 10px", padding: "9px 10px", borderRadius: 11, border: `1px solid ${theme.border}`, background: "rgba(255,255,255,.7)", color: theme.head, fontWeight: 750, fontSize: 11.5, textAlign: "center", cursor: "pointer", fontFamily: FONT_BODY, width: "calc(100% - 20px)" }}
+                style={{ margin: "0 10px 10px", padding: "10px", borderRadius: 10, border: "1px solid #DDE1E5", background: "#FFFFFF", color: "#50575F", fontWeight: 750, fontSize: 11.5, textAlign: "center", cursor: "pointer", fontFamily: FONT_BODY, width: "calc(100% - 20px)" }}
               >
                 <span style={{ fontSize: 16, verticalAlign: -1, marginRight: 5 }}>＋</span> Add sample
               </button>
@@ -3445,7 +3464,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
         opacity: isDragging ? 0.58 : 1,
       }}
     >
-      <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: "0 4px 4px 0", background: theme.accent }} />
+      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#FF5500" : "#E4E7EA" }} />
       <button
         type="button"
         aria-label={selected ? `Deselect ${s.name || s.id}` : `Select ${s.name || s.id}`}
@@ -3477,14 +3496,14 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
                 {s.erpNo ? s.erpNo : "No ERP code"}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}><button type="button" title="Show sample QR" aria-label="Show sample QR" onClick={(e) => { e.stopPropagation(); onShowQR?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false} style={{ width: 25, height: 25, borderRadius: 7, border: `1px solid ${theme.border}`, background: theme.soft, color: theme.head, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><QrCodeIcon size={13} /></button><span style={{ color: "#8B8F94", fontSize: 17, lineHeight: 1, cursor: "pointer", padding: "0 1px" }}>⋯</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}><button type="button" className="kanban-icon-button" title="Show sample QR" aria-label="Show sample QR" onClick={(e) => { e.stopPropagation(); onShowQR?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><QrCodeIcon size={14} /></button><button type="button" className="kanban-icon-button" title="Edit sample" aria-label="Edit sample" onClick={(e) => { e.stopPropagation(); onClick?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><Pencil size={14} /></button></div>
           </div>
           <div className="kanban-meta" style={{ marginTop: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customerName || "—"}</div>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <span className="kanban-pill" style={{ color: theme.head, background: theme.soft }}>{s.productTypeName || s.productType || "Sample"}</span>
+        <span className="kanban-pill" style={{ color: "#4F565E", background: "#F1F3F5", border: "1px solid #E1E4E8" }}>{s.productTypeName || s.productType || "Sample"}</span>
         <span className="kanban-pill" style={{ color: "#686D73", background: "#F3F4F6" }}>Qty {s.quantity ?? s.qty ?? 1}</span>
         {s.priority && <span className="kanban-pill" style={{ color: s.priority === "Urgent" ? "#A83200" : "#686D73", background: s.priority === "Urgent" ? "#FCE2D7" : "#F3F4F6" }}>{s.priority}</span>}
       </div>
@@ -3522,7 +3541,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
         value={stage}
         onChange={(e) => onMoveStage(e.target.value)}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", fontSize: 11.5, padding: "7px 9px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.soft, color: theme.head, fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
+        style={{ width: "100%", fontSize: 11.5, padding: "8px 10px", borderRadius: 10, border: "1px solid #E1E4E8", background: "#F8F9FA", color: "#3F464D", fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
       >
         {SAMPLE_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
       </select>
