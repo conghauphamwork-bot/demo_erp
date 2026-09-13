@@ -827,7 +827,15 @@ function AppInner({ currentUser = null, onLogout = null }) {
 function levelCan(level, module, action = "view") {
   const l = Number(level ?? 3);
   if (l === 0) return true;
-  if (l === 1) return module !== "users" && !(action === "delete" && module === "materials");
+
+  // Level 1 test role: ONLY Samples, Tasks and Calendar.
+  // Keep this intentionally strict so the test account cannot navigate to
+  // other ERP modules from the sidebar.
+  if (l === 1) {
+    if (!["samples", "tasks", "calendar"].includes(module)) return false;
+    return ["view", "create", "edit", "import", "export"].includes(action);
+  }
+
   if (l === 2) {
     if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai"].includes(module)) return false;
     if (["delete", "import"].includes(action)) return false;
@@ -837,7 +845,11 @@ function levelCan(level, module, action = "view") {
 }
 
   const [loaded, setLoaded] = useState(false);
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState(() => {
+    const l = Number(currentUser?.level ?? 3);
+    if (l === 1) return "samples";
+    return "dashboard";
+  });
   const [qrSampleId, setQrSampleId] = useState(() => new URLSearchParams(window.location.search).get("sample") || "");
   const [publicSample, setPublicSample] = useState(null);
   const [publicSampleError, setPublicSampleError] = useState("");
@@ -1034,6 +1046,15 @@ function levelCan(level, module, action = "view") {
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
     { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
   ].filter(n => levelCan(currentUser?.level, n.module, "view"));
+
+  // If a user's role changes while the app is open, keep the active view inside
+  // the modules allowed by that role.
+  useEffect(() => {
+    if (!levelCan(currentUser?.level, view, "view")) {
+      const firstAllowed = NAV[0]?.key || "samples";
+      setView(firstAllowed);
+    }
+  }, [currentUser?.level, view]);
 
   return (
     <div className="erp-shell" style={{ fontFamily: FONT_BODY, background: COLORS.bg, color: COLORS.ink }}>
@@ -1302,7 +1323,7 @@ function levelCan(level, module, action = "view") {
           <button onClick={onLogout} style={{ marginTop: 9, border: 0, background: "transparent", color: "#C9BFC0", padding: 0, fontSize: 11.5, cursor: "pointer" }}>Sign out</button>
         </div>
 
-        <button
+        {levelCan(currentUser?.level, "backup", "export") && <button
           onClick={handleExportBackup}
           style={{
             width: "100%",
@@ -1324,15 +1345,15 @@ function levelCan(level, module, action = "view") {
         >
           <Download size={16} strokeWidth={2} />
           Export Full Backup
-        </button>
+        </button>}
       </div>
 
       {/* Content */}
       <div className="erp-content"><div className="erp-page">
-        {view === "dashboard" && (
+        {view === "dashboard" && levelCan(currentUser?.level, "dashboard") && (
           <Dashboard customers={customers} quotes={quotes} orders={orders} samples={samples} shipments={shipments} customerName={customerName} materialPreps={materialPreps} tasks={tasks} />
         )}
-        {view === "customers" && <CustomersView customers={customers} save={setAndSave.customers} quotes={quotes} orders={orders} />}
+        {view === "customers" && levelCan(currentUser?.level, "customers") && <CustomersView customers={customers} save={setAndSave.customers} quotes={quotes} orders={orders} />}
         {view === "quotes" && levelCan(currentUser?.level, "quotes") && (
           <QuotesView
             quotes={quotes}
@@ -1383,7 +1404,7 @@ function levelCan(level, module, action = "view") {
         )}
       </div></div>
 
-      <FloatingAIAssistant
+      {levelCan(currentUser?.level, "ai", "view") && <FloatingAIAssistant
         samples={samples}
         tasks={tasks}
         customers={customers}
@@ -1391,7 +1412,7 @@ function levelCan(level, module, action = "view") {
         orders={orders}
         customerName={customerName}
         productTypeName={productTypeName}
-      />
+      />}
     </div>
   );
 }
