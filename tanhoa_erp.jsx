@@ -1008,6 +1008,18 @@ function levelCan(level, module, action = "view") {
     alert("Full backup exported successfully.");
   };
 
+  // Keep the active view inside the modules allowed by the current role.
+  // This hook must run on every render so React's hook order never changes
+  // when the workspace finishes loading.
+  useEffect(() => {
+    const allowedForLevel = Number(currentUser?.level ?? 3) === 1
+      ? ["samples", "tasks", "calendar"]
+      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping"];
+    if (!allowedForLevel.includes(view)) {
+      setView(allowedForLevel[0] || "samples");
+    }
+  }, [currentUser?.level, view]);
+
   if (!supabaseConfigured) {
     return (
       <div style={{ fontFamily: FONT_BODY, padding: 28, maxWidth: 760, margin: "40px auto", background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 14 }}>
@@ -1046,15 +1058,6 @@ function levelCan(level, module, action = "view") {
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
     { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
   ].filter(n => levelCan(currentUser?.level, n.module, "view"));
-
-  // If a user's role changes while the app is open, keep the active view inside
-  // the modules allowed by that role.
-  useEffect(() => {
-    if (!levelCan(currentUser?.level, view, "view")) {
-      const firstAllowed = NAV[0]?.key || "samples";
-      setView(firstAllowed);
-    }
-  }, [currentUser?.level, view]);
 
   return (
     <div className="erp-shell" style={{ fontFamily: FONT_BODY, background: COLORS.bg, color: COLORS.ink }}>
