@@ -293,11 +293,13 @@ function exportFullBackup(data) {
 }
 
 async function saveCollection(table, previous, next, adapter) {
+  // Upsert first, delete obsolete rows second. This prevents a failed schema/API
+  // write from deleting existing data before the replacement rows are saved.
   const oldIds = new Set((previous || []).map((x) => x.id));
   const newIds = new Set((next || []).map((x) => x.id));
-  for (const id of oldIds) if (!newIds.has(id)) await deleteRow(table, id);
   const rows = (next || []).filter((x) => x?.id).map(adapter);
   await upsertRows(table, rows);
+  for (const id of oldIds) if (!newIds.has(id)) await deleteRow(table, id);
 }
 
 async function imageFileToDataUrl(file, maxDimension = 1600, quality = 0.82) {
@@ -1015,9 +1017,10 @@ function levelCan(level, module, action = "view") {
       setMaterialLists((prev) => ({ ...prev, [key]: next }));
       const table = { productTypes: "product_types", mainMaterials: "main_materials", finishes: "finishes", woodSurface: "wood_surface_treatments", fabricTypes: "fabric_types", fabricColors: "fabric_colors", ropeTypes: "rope_types", ropeColors: "rope_colors", cemboardColors: "cemboard_colors" }[key];
       if (!table) return;
-      const colorMasterKeys = ["finishes", "fabricColors", "ropeColors"];
-      const masterAdapter = colorMasterKeys.includes(key) ? (adapters.colorMasters || adapters.masters) : adapters.masters;
-      saveCollection(table, materialLists[key] || [], next, masterAdapter).catch((e) => alert("Material master save failed: " + e.message));
+      // All material-master tables currently share the same Supabase schema:
+      // id + code + name. Do not send UI-only fields (for example image_url)
+      // unless the corresponding DB column is explicitly migrated first.
+      saveCollection(table, materialLists[key] || [], next, adapters.masters).catch((e) => alert("Material master save failed: " + e.message));
     },
   };
 
