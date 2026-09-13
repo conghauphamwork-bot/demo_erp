@@ -3703,8 +3703,8 @@ function getMaterialReadiness(sample, materialPreps = []) {
 
 function materialReadinessTone(readiness) {
   if (readiness.status === "Ready") return { bg: "#EAF7EE", color: "#247A45", border: "#BFE5CB" };
-  if (readiness.status === "Partial") return { bg: "#FFF4E5", color: "#B45B08", border: "#F4D09D" };
-  if (readiness.status === "Blocked") return { bg: "#FFF0EC", color: "#B83B19", border: "#F2C0B1" };
+  if (readiness.status === "Partial") return { bg: "#F7F1E9", color: "#8A6F50", border: "#DCC6A9" };
+  if (readiness.status === "Blocked") return { bg: "#FBF1EE", color: "#A6533D", border: "#E7C2B8" };
   return { bg: "#F3F4F6", color: "#73777D", border: "#E0E2E5" };
 }
 
@@ -3806,23 +3806,8 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
   };
 
 
-  const readinessSummary = samples.reduce((acc, sample) => {
-    const r = getMaterialReadiness(sample, materialPreps);
-    if (r.status === "Ready") acc.ready += 1;
-    if (r.status === "Partial" || r.status === "Blocked") acc.missing += 1;
-    if (r.overdue > 0) acc.overdue += 1;
-    if (r.status === "No Material Plan") acc.noPlan += 1;
-    return acc;
-  }, { ready: 0, missing: 0, overdue: 0, noPlan: 0 });
-
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, margin: "0 2px 10px", flexWrap: "wrap" }}>
-        <div style={{ padding: "7px 11px", borderRadius: 11, background: "#EAF7EE", border: "1px solid #CDEBD6", color: "#247A45", fontSize: 11, fontWeight: 800 }}>✓ {readinessSummary.ready} Ready</div>
-        <div style={{ padding: "7px 11px", borderRadius: 11, background: "#FFF4E5", border: "1px solid #F4D09D", color: "#B45B08", fontSize: 11, fontWeight: 800 }}>⚠ {readinessSummary.missing} Missing</div>
-        <div style={{ padding: "7px 11px", borderRadius: 11, background: "#FFF0EC", border: "1px solid #F2C0B1", color: "#B83B19", fontSize: 11, fontWeight: 800 }}>🔴 {readinessSummary.overdue} Overdue</div>
-        <div style={{ padding: "7px 11px", borderRadius: 11, background: "#F3F4F6", border: "1px solid #E0E2E5", color: "#73777D", fontSize: 11, fontWeight: 800 }}>— {readinessSummary.noPlan} No plan</div>
-      </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, margin: "0 2px 12px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: "#555" }}>Material readiness</span>
