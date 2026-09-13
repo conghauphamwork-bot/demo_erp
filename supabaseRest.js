@@ -5,6 +5,72 @@ export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 const STORAGE_BUCKET = "erp-images";
 
+const AUTH_STORAGE_KEY = "tanhoa_erp_auth_session";
+
+export async function signIn(email, password) {
+  assertConfigured();
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error_description || data.msg || data.message || "Login failed.");
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
+  return data;
+}
+
+export function getAuthSession() {
+  try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || "null"); } catch (_) { return null; }
+}
+
+export async function refreshAuthSession() {
+  const current = getAuthSession();
+  if (!current?.refresh_token) return null;
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: current.refresh_token }),
+  });
+  if (!res.ok) { localStorage.removeItem(AUTH_STORAGE_KEY); return null; }
+  const data = await res.json();
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
+  return data;
+}
+
+export async function getCurrentUser() {
+  const session = getAuthSession();
+  if (!session?.access_token) return null;
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function signOut() {
+  const session = getAuthSession();
+  if (session?.access_token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+    }).catch(() => {});
+  }
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+export async function getMyProfile() {
+  const user = await getCurrentUser();
+  if (!user?.id) return null;
+  const rows = await request(`profiles?id=eq.${encodeURIComponent(user.id)}&select=*`);
+  return rows?.[0] || null;
+}
+
+export function authHeaders() {
+  const session = getAuthSession();
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
+
 function storageObjectPath(path) {
   return String(path || "").split("/").map((part) => encodeURIComponent(part)).join("/");
 }
@@ -22,7 +88,7 @@ export async function uploadStorageImage(file, folder, prefix = "image") {
     method: "POST",
     headers: {
       apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${getAuthSession()?.access_token || SUPABASE_ANON_KEY}`,
       "x-upsert": "false",
       "cache-control": "3600",
     },
@@ -47,7 +113,7 @@ async function request(path, options = {}) {
   assertConfigured();
   const headers = {
     apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    Authorization: `Bearer ${getAuthSession()?.access_token || SUPABASE_ANON_KEY}`,
     "Content-Type": "application/json",
     ...options.headers,
   };
@@ -94,15 +160,6 @@ export async function syncArray(table, previous, next, toRow) {
   }
   const rows = (next || []).filter((x) => x?.id).map(toRow);
   await upsertRows(table, rows);
-}
-
-
-export async function loadPublicSample(sampleId) {
-  if (!sampleId) return null;
-  return request("rpc/get_public_sample", {
-    method: "POST",
-    body: JSON.stringify({ p_sample_id: sampleId }),
-  });
 }
 
 export async function loadWorkspace() {
@@ -174,7 +231,7 @@ function groupBy(rows, key) {
 
 function nullify(value) { return value === "" || value === undefined ? null : value; }
 function customerToApp(r) { return { id: r.id, name: r.name || "", country: r.country || "", contact: r.contact_person || "", email: r.email || "", phone: r.phone || "" }; }
-function simpleMasterToApp(r) { return { id: r.id, code: r.code || "", name: r.name || "" }; }
+function simpleMasterToApp(r) { return { id: r.id, code: r.code || "", name: r.name || "", image: r.image_url || "" }; }
 function taskToApp(r) { return { id: r.id, name: r.name || "", type: r.type || "Daily", description: r.description || "", referencePerson: r.reference_person || "", deadline: r.deadline || "", status: r.status || "To Do", priority: r.priority || "", sampleId: r.sample_id || "", note: r.note || "", image: r.image_url || "" }; }
 function sampleComponentsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, materialName: r.component_name || "", qty: r.qty ?? 1, startDate: r.start_date || "", dueDate: r.target_date || "", status: r.status || "Waiting", photo: r.proof_image_url || "" })); }
 function sampleNotesToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, text: r.note || "", createdAt: r.created_at || new Date().toISOString() })); }
@@ -202,6 +259,7 @@ export const adapters = {
   components: (x) => ({ id: x.id, sample_id: x.sampleId, component_name: x.materialName || "", qty: x.qty ?? 1, start_date: nullify(x.startDate), target_date: nullify(x.dueDate), status: x.status || "Waiting", proof_image_url: nullify(x.photo) }),
   tasks: (x) => ({ id: x.id, name: x.name || "", type: x.type || "Daily", description: nullify(x.description), reference_person: nullify(x.referencePerson), deadline: nullify(x.deadline), status: x.status || "To Do", priority: nullify(x.priority), sample_id: nullify(x.sampleId), note: nullify(x.note), image_url: nullify(x.image) }),
   masters: (x) => ({ id: x.id, code: x.code || "", name: x.name || "" }),
+  colorMasters: (x) => ({ id: x.id, code: x.code || "", name: x.name || "", image_url: nullify(x.image) }),
 };
 
 export async function saveSampleChildren(sample) {
