@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import QRCode from "qrcode";
 import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil } from "lucide-react";
-import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage } from "./supabaseRest";
+import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
 // supabaseRest.js copies that may still be deployed in Vercel.
@@ -190,15 +190,15 @@ function normalizeSampleWorkflowStage(stage) {
 // closer to completion. Keeping one orange family makes the workflow feel like
 // one continuous production pipeline instead of seven unrelated categories.
 const SAMPLE_STAGE_THEME = {
-  // One visual language: almost-neutral at the start, progressively warmer and
-  // stronger toward Shipping so users can read completion level at a glance.
-  "Request Received":      { bg: "#F8F9FA", head: "#5B6470", border: "#E5E7EB", accent: "#C9CED4", soft: "#F1F3F5" },
-  "Material Preparation":  { bg: "#FCF8F4", head: "#7A624E", border: "#EADFD5", accent: "#D8B99D", soft: "#F7EDE5" },
-  "Assembly":              { bg: "#FDF3EB", head: "#92552F", border: "#EBD0BC", accent: "#DFA27B", soft: "#F8E3D4" },
-  "Quality Check":         { bg: "#FCECE1", head: "#A94D20", border: "#E8BFA7", accent: "#DF8B5C", soft: "#F7D8C6" },
-  "Customer Correction":   { bg: "#FBE2D3", head: "#B64212", border: "#E6AB8B", accent: "#D96F3A", soft: "#F6CDB9" },
-  "Packaging":             { bg: "#F9D5BC", head: "#BD410A", border: "#DF9670", accent: "#D95D20", soft: "#F4BFA0" },
-  "Shipping":              { bg: "#F7C19D", head: "#806A51", border: "#D97843", accent: "#DCC6A9", soft: "#F3A878" },
+  // Tân Hòa brand rule: the primary UI hue is ALWAYS #DCC6A9.
+  // Workflow stages use neutral/beige variations only; no orange/pink/green stage colors.
+  "Request Received":      { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Material Preparation":  { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Assembly":              { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Quality Check":         { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Customer Correction":   { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Packaging":             { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Shipping":              { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
 };
 
 const CONSTRUCTION_OPTIONS = ["K/D", "Full Assembly"];
@@ -740,14 +740,95 @@ class ErrorBoundary extends React.Component {
 }
 
 export default function App() {
+  const qrSampleId = new URLSearchParams(window.location.search).get("sample") || "";
+  // Public Sample Passport stays accessible without login.
+  if (qrSampleId) {
+    return (
+      <ErrorBoundary>
+        <AppInner />
+      </ErrorBoundary>
+    );
+  }
   return (
     <ErrorBoundary>
-      <AppInner />
+      <AuthGate />
     </ErrorBoundary>
   );
 }
 
-function AppInner() {
+function AuthGate() {
+  const [session, setSession] = useState(() => getAuthSession());
+  const [profile, setProfile] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  const loadAuth = useCallback(async () => {
+    setChecking(true);
+    try {
+      let next = getAuthSession();
+      if (next?.refresh_token) next = await refreshAuthSession() || next;
+      if (!next?.access_token) { setSession(null); setProfile(null); return; }
+      const p = await getMyProfile();
+      if (!p || p.is_active === false) { await signOut(); setSession(null); setProfile(null); return; }
+      setSession(next);
+      setProfile(p);
+    } catch (e) {
+      console.error("Auth check failed", e);
+      await signOut();
+      setSession(null); setProfile(null);
+    } finally { setChecking(false); }
+  }, []);
+
+  useEffect(() => { loadAuth(); }, [loadAuth]);
+  if (checking) return <AuthLoading />;
+  if (!session || !profile) return <LoginScreen onLogin={loadAuth} />;
+  return <AppInner currentUser={profile} onLogout={async () => { await signOut(); setSession(null); setProfile(null); }} />;
+}
+
+function AuthLoading() {
+  return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: COLORS.bg, fontFamily: FONT_BODY, color: COLORS.inkSoft }}>Loading Tân Hòa ERP…</div>;
+}
+
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true); setError("");
+    try { await signIn(email.trim(), password); await onLogin(); }
+    catch (err) { setError(err.message || "Login failed."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: COLORS.bg, padding: 20, fontFamily: FONT_BODY }}>
+      <form onSubmit={submit} style={{ width: "100%", maxWidth: 400, background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 20, padding: 30, boxShadow: "0 18px 50px rgba(17,17,17,.08)" }}>
+        <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: -.5 }}>Tân Hòa</div>
+        <div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Outdoor Furniture · Sales ERP</div>
+        <div style={{ marginTop: 28, fontSize: 18, fontWeight: 750 }}>Sign in</div>
+        <label style={{ display: "block", marginTop: 18, fontSize: 12, fontWeight: 700 }}>Email</label>
+        <input value={email} onChange={e => setEmail(e.target.value)} type="email" autoComplete="username" required style={{ width: "100%", marginTop: 7, padding: "11px 12px" }} />
+        <label style={{ display: "block", marginTop: 14, fontSize: 12, fontWeight: 700 }}>Password</label>
+        <input value={password} onChange={e => setPassword(e.target.value)} type="password" autoComplete="current-password" required style={{ width: "100%", marginTop: 7, padding: "11px 12px" }} />
+        {error && <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: COLORS.redSoft, color: COLORS.red, fontSize: 12.5 }}>{error}</div>}
+        <button type="submit" disabled={busy} style={{ width: "100%", marginTop: 20, padding: "12px 14px", border: 0, borderRadius: 12, background: COLORS.wood, color: "#332B23", fontWeight: 800, cursor: busy ? "wait" : "pointer" }}>{busy ? "Signing in…" : "Sign In"}</button>
+      </form>
+    </div>
+  );
+}
+
+function AppInner({ currentUser = null, onLogout = null }) {
+function levelCan(level, module, action = "view") {
+  const l = Number(level ?? 3);
+  if (l === 0) return true;
+  if (l === 1) return module !== "users" && !(action === "delete" && module === "materials");
+  if (l === 2) {
+    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai"].includes(module)) return false;
+    if (["delete", "import"].includes(action)) return false;
+    return true;
+  }
+  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai"].includes(module);
+}
+
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState("dashboard");
   const [qrSampleId, setQrSampleId] = useState(() => new URLSearchParams(window.location.search).get("sample") || "");
@@ -882,7 +963,9 @@ function AppInner() {
       setMaterialLists((prev) => ({ ...prev, [key]: next }));
       const table = { productTypes: "product_types", mainMaterials: "main_materials", finishes: "finishes", woodSurface: "wood_surface_treatments", fabricTypes: "fabric_types", fabricColors: "fabric_colors", ropeTypes: "rope_types", ropeColors: "rope_colors", cemboardColors: "cemboard_colors" }[key];
       if (!table) return;
-      saveCollection(table, materialLists[key] || [], next, adapters.masters).catch((e) => alert("Material master save failed: " + e.message));
+      const colorMasterKeys = ["finishes", "fabricColors", "ropeColors"];
+      const masterAdapter = colorMasterKeys.includes(key) ? (adapters.colorMasters || adapters.masters) : adapters.masters;
+      saveCollection(table, materialLists[key] || [], next, masterAdapter).catch((e) => alert("Material master save failed: " + e.message));
     },
   };
 
@@ -934,16 +1017,16 @@ function AppInner() {
   }
 
   const NAV = [
-    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { key: "customers", label: "Customers", icon: Users },
-    { key: "quotes", label: "Quotes", icon: FileText },
-    { key: "orders", label: "Orders", icon: ShoppingCart },
-    { key: "samples", label: "Samples", icon: Boxes },
-    { key: "tasks", label: "Tasks", icon: ListTodo },
-    { key: "calendar", label: "Calendar", icon: CalendarDays },
-    { key: "materials", label: "Materials", icon: Palette },
-    { key: "shipping", label: "Shipping", icon: Truck },
-  ];
+    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
+    { key: "customers", label: "Customers", icon: Users, module: "customers" },
+    { key: "quotes", label: "Quotes", icon: FileText, module: "quotes" },
+    { key: "orders", label: "Orders", icon: ShoppingCart, module: "orders" },
+    { key: "samples", label: "Samples", icon: Boxes, module: "samples" },
+    { key: "tasks", label: "Tasks", icon: ListTodo, module: "tasks" },
+    { key: "calendar", label: "Calendar", icon: CalendarDays, module: "calendar" },
+    { key: "materials", label: "Materials", icon: Palette, module: "materials" },
+    { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
+  ].filter(n => levelCan(currentUser?.level, n.module, "view"));
 
   return (
     <div className="erp-shell" style={{ fontFamily: FONT_BODY, background: COLORS.bg, color: COLORS.ink }}>
@@ -958,13 +1041,13 @@ function AppInner() {
         .erp-page { width: 100%; max-width: 1680px; margin: 0 auto; }
         .sample-kanban-board {
           display: grid !important;
-          grid-template-columns: repeat(7, minmax(310px, 330px));
-          gap: 12px;
+          grid-template-columns: repeat(7, minmax(390px, 420px));
+          gap: 14px;
           width: 100%;
           min-width: 0;
           overflow-x: auto !important;
           overflow-y: hidden;
-          padding: 2px 4px 16px 2px;
+          padding: 2px 4px 18px 2px;
           scroll-snap-type: x proximity;
           scrollbar-width: auto;
           scrollbar-color: #B9BDC3 transparent;
@@ -973,14 +1056,14 @@ function AppInner() {
         .sample-kanban-board::-webkit-scrollbar-track { background: #EEF0F2; border-radius: 99px; }
         .sample-kanban-board::-webkit-scrollbar-thumb { background: #B9BDC3; border-radius: 99px; }
         .sample-kanban-column {
-          min-width: 310px !important;
-          width: 330px !important;
+          min-width: 390px !important;
+          width: 420px !important;
           min-height: 0;
           height: calc(100vh - 250px) !important;
           max-height: calc(100vh - 250px) !important;
           scroll-snap-align: start;
-          background: #FAFAFA !important;
-          border: 1px solid #E2E5E8 !important;
+          background: #FFFFFF !important;
+          border: 1px solid #E3DED7 !important;
           box-shadow: 0 2px 8px rgba(17,17,17,.035) !important;
         }
         .sample-kanban-column:hover { box-shadow: 0 5px 16px rgba(17,17,17,.06) !important; }
@@ -988,6 +1071,7 @@ function AppInner() {
         .sample-kanban-card {
           min-width: 0;
           min-height: 176px !important;
+          width: 100%;
           flex: 0 0 auto !important;
           transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
         }
@@ -1013,7 +1097,7 @@ function AppInner() {
         .sample-kanban-card select {
           min-height: 31px;
           border-color: #E4E7EB !important;
-          background: #F8F9FA !important;
+          background: #FFFFFF !important;
         }
         .sample-kanban-column-body {
           min-height: 0 !important;
@@ -1036,11 +1120,12 @@ function AppInner() {
           color: #73777D;
         }
         .sample-kanban-card .kanban-erp-code {
-          font-size: 10.5px;
-          line-height: 1.25;
-          letter-spacing: -.05px;
-          overflow-wrap: anywhere;
-          word-break: break-word;
+          font-size: 10px;
+          line-height: 1.2;
+          letter-spacing: -.1px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .sample-kanban-card .kanban-pill {
           font-size: 9.5px;
@@ -1062,10 +1147,10 @@ function AppInner() {
         @media (max-width: 1280px) {
           .erp-sidebar { width: 216px; flex-basis: 216px; }
           .sample-kanban-board {
-            grid-template-columns: repeat(7, minmax(300px, 320px));
+            grid-template-columns: repeat(7, minmax(390px, 420px));
             overflow-x: auto !important;
           }
-          .sample-kanban-column { min-width: 300px !important; width: 320px !important; }
+          .sample-kanban-column { min-width: 390px !important; width: 420px !important; }
         }
         @media (max-width: 820px) {
           .erp-shell { display: block; overflow: visible; }
@@ -1073,8 +1158,8 @@ function AppInner() {
           .erp-sidebar nav { flex-direction: row !important; overflow-x: auto; gap: 4px !important; padding-bottom: 2px; }
           .erp-sidebar nav button { white-space: nowrap; flex: 0 0 auto; }
           .erp-content { height: auto; min-height: calc(100vh - 130px); overflow: visible; padding: 16px; }
-          .sample-kanban-board { grid-template-columns: repeat(7, minmax(300px, 320px)); overflow-x: auto !important; width: 100%; min-width: 0; }
-          .sample-kanban-column { min-width: 300px !important; width: 320px !important; height: calc(100vh - 210px) !important; max-height: calc(100vh - 210px) !important; }
+          .sample-kanban-board { grid-template-columns: repeat(7, minmax(340px, 380px)); overflow-x: auto !important; width: 100%; min-width: 0; }
+          .sample-kanban-column { min-width: 340px !important; width: 380px !important; height: calc(100vh - 210px) !important; max-height: calc(100vh - 210px) !important; }
         }
         /* --- Floating ERP AI Assistant --- */
         .floating-ai-button {
@@ -1204,6 +1289,12 @@ function AppInner() {
           })}
         </nav>
 
+        <div style={{ marginTop: 18, padding: "12px", borderRadius: 12, background: "rgba(255,255,255,.055)", border: "1px solid rgba(255,255,255,.08)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser?.full_name || currentUser?.email || "Sales User"}</div>
+          <div style={{ marginTop: 3, fontSize: 10.5, color: COLORS.sidebarSoft }}>Level {currentUser?.level ?? 3}</div>
+          <button onClick={onLogout} style={{ marginTop: 9, border: 0, background: "transparent", color: "#C9BFC0", padding: 0, fontSize: 11.5, cursor: "pointer" }}>Sign out</button>
+        </div>
+
         <button
           onClick={handleExportBackup}
           style={{
@@ -1235,7 +1326,7 @@ function AppInner() {
           <Dashboard customers={customers} quotes={quotes} orders={orders} samples={samples} shipments={shipments} customerName={customerName} materialPreps={materialPreps} tasks={tasks} />
         )}
         {view === "customers" && <CustomersView customers={customers} save={setAndSave.customers} quotes={quotes} orders={orders} />}
-        {view === "quotes" && (
+        {view === "quotes" && levelCan(currentUser?.level, "quotes") && (
           <QuotesView
             quotes={quotes}
             saveQuotes={setAndSave.quotes}
@@ -1245,7 +1336,7 @@ function AppInner() {
             saveOrders={setAndSave.orders}
           />
         )}
-        {view === "orders" && (
+        {view === "orders" && levelCan(currentUser?.level, "orders") && (
           <OrdersView
             orders={orders}
             saveOrders={setAndSave.orders}
@@ -1254,7 +1345,7 @@ function AppInner() {
             samples={samples}
           />
         )}
-        {view === "samples" && (
+        {view === "samples" && levelCan(currentUser?.level, "samples") && (
           <SamplesView
             samples={samples}
             saveSamples={setAndSave.samples}
@@ -1271,16 +1362,16 @@ function AppInner() {
             saveTasks={setAndSave.tasks}
           />
         )}
-        {view === "tasks" && (
+        {view === "tasks" && levelCan(currentUser?.level, "tasks") && (
           <TasksView tasks={tasks} saveTasks={setAndSave.tasks} samples={samples} customers={customers} customerName={customerName} />
         )}
-        {view === "calendar" && (
+        {view === "calendar" && levelCan(currentUser?.level, "calendar") && (
           <CalendarView samples={samples} materialPreps={materialPreps} tasks={tasks} customerName={customerName} saveSamples={setAndSave.samples} saveMaterialPreps={setAndSave.materialPreps} saveTasks={setAndSave.tasks} />
         )}
-        {view === "materials" && (
+        {view === "materials" && levelCan(currentUser?.level, "materials") && (
           <MaterialsView materialLists={materialLists} saveList={setAndSave.materialList} />
         )}
-        {view === "shipping" && (
+        {view === "shipping" && levelCan(currentUser?.level, "shipping") && (
           <ShippingView shipments={shipments} saveShipments={setAndSave.shipments} orders={orders} customerName={customerName} customers={customers} />
         )}
       </div></div>
@@ -3487,6 +3578,8 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           onBulkDelete={bulkDeleteSamples}
           onAddSample={startNew}
           onCardClick={(s) => { setViewing(s); setShowForm(false); }}
+          onQuickEdit={(s) => { setViewing(null); setShowForm(false); }}
+          onSaveSample={(updated) => { saveSamples(samples.map((x) => x.id === updated.id ? updated : x)); }}
           onShowQR={(s) => setQrSample(s)}
         />
       ) : (
@@ -3567,21 +3660,44 @@ function SampleCard({ sample: s, customerName, onClick }) {
 
 function getMaterialReadiness(sample, materialPreps = []) {
   const live = (materialPreps || []).filter((p) => p.sampleId === sample.id);
-  const snapshot = (sample.requiredComponents || []).map((c) => ({
-    id: c.id || c.name,
-    materialName: c.name || "Material",
-    status: c.status || "Waiting",
-    dueDate: c.targetDate || "",
-  }));
-  const rows = live.length ? live : snapshot;
+  const snapshot = Array.isArray(sample.requiredComponents) ? sample.requiredComponents : [];
+
+  // Build the required-material set from BOTH the sample definition and the
+  // live material-prep rows. This prevents a partial live plan from hiding
+  // required materials that are still missing from preparation.
+  const byKey = new Map();
+  snapshot.forEach((c, index) => {
+    const key = String(c.id || c.name || `snapshot:${index}`);
+    byKey.set(key, {
+      id: c.id || key,
+      materialName: c.name || 'Material',
+      status: c.status || 'Waiting',
+      dueDate: c.targetDate || '',
+      qty: c.qty || 1,
+    });
+  });
+  live.forEach((p, index) => {
+    const key = String(p.id || p.componentId || p.materialName || `live:${index}`);
+    const existing = byKey.get(key);
+    byKey.set(key, {
+      ...(existing || {}),
+      id: p.id || existing?.id || key,
+      materialName: p.materialName || p.displayName || existing?.materialName || 'Material',
+      status: p.status || existing?.status || 'Waiting',
+      dueDate: p.dueDate || existing?.dueDate || '',
+      qty: p.qty ?? existing?.qty ?? 1,
+    });
+  });
+
+  const rows = Array.from(byKey.values());
   const total = rows.length;
-  const done = rows.filter((r) => String(r.status || "").trim().toLowerCase() === "done").length;
-  const missing = rows.filter((r) => String(r.status || "").trim().toLowerCase() !== "done");
+  const done = rows.filter((r) => String(r.status || '').trim().toLowerCase() === 'done').length;
+  const missing = rows.filter((r) => String(r.status || '').trim().toLowerCase() !== 'done');
   const overdue = missing.filter((r) => r.dueDate && r.dueDate < todayStr()).length;
-  let status = "No Material Plan";
-  if (total > 0 && done === total) status = "Ready";
-  else if (total > 0 && done > 0) status = "Partial";
-  else if (total > 0) status = "Blocked";
+  let status = 'No Material Plan';
+  if (total > 0 && done === total) status = 'Ready';
+  else if (total > 0 && done > 0) status = 'Partial';
+  else if (total > 0) status = 'Blocked';
   return { total, done, missing, overdue, status, percent: total ? Math.round((done / total) * 100) : 0 };
 }
 
@@ -3592,7 +3708,7 @@ function materialReadinessTone(readiness) {
   return { bg: "#F3F4F6", color: "#73777D", border: "#E0E2E5" };
 }
 
-function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMove, onBulkDelete, onAddSample, onCardClick, onShowQR }) {
+function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMove, onBulkDelete, onAddSample, onCardClick, onQuickEdit, onSaveSample, onShowQR }) {
   const [dragOverStage, setDragOverStage] = useState(null);
   const [draggingIds, setDraggingIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -3644,11 +3760,19 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
     if (!ids.length) return;
     const idSet = new Set(ids);
     if (stage === "Assembly") {
-      const blocked = samples.filter((s) => idSet.has(s.id)).map((s) => ({ sample: s, readiness: getMaterialReadiness(s, materialPreps) })).filter(({ readiness }) => readiness.total > 0 && readiness.status !== "Ready");
+      // Assembly requires a complete material plan. Warn for both partial
+      // preparation and samples that have no material plan at all.
+      const blocked = samples
+        .filter((s) => idSet.has(s.id))
+        .map((s) => ({ sample: s, readiness: getMaterialReadiness(s, materialPreps) }))
+        .filter(({ readiness }) => readiness.status !== "Ready");
       if (blocked.length) {
-        const lines = blocked.slice(0, 6).map(({ sample, readiness }) => `• ${sample.name || sample.id}: ${readiness.done}/${readiness.total} ready — missing ${readiness.missing.map((m) => m.materialName || "Material").join(", ")}`).join("\n");
+        const lines = blocked.slice(0, 6).map(({ sample, readiness }) => {
+          if (readiness.status === "No Material Plan") return `• ${sample.name || sample.id}: no material plan`;
+          return `• ${sample.name || sample.id}: ${readiness.done}/${readiness.total} ready — missing ${readiness.missing.map((m) => m.materialName || "Material").join(", ")}`;
+        }).join("\n");
         const extra = blocked.length > 6 ? `\n+ ${blocked.length - 6} more sample(s)` : "";
-        const ok = window.confirm(`⚠ Materials not ready for Assembly.\n\n${lines}${extra}\n\nMove anyway?`);
+        const ok = window.confirm(`⚠ Materials are not fully ready for Assembly.\n\n${lines}${extra}\n\nYou can move it to Assembly anyway, but the sample will remain flagged as missing materials.\n\nMove anyway?`);
         if (!ok) { setDraggingIds([]); return; }
       }
     }
@@ -3660,6 +3784,20 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
     }
     setSelectedIds((current) => current.filter((id) => !idSet.has(id)));
     setDraggingIds([]);
+  };
+
+  const moveOneStage = (sample, stage) => {
+    if (stage === "Assembly" && normalizeSampleWorkflowStage(sample.stage) !== "Assembly") {
+      const readiness = getMaterialReadiness(sample, materialPreps);
+      if (readiness.status !== "Ready") {
+        const detail = readiness.status === "No Material Plan"
+          ? "no material plan"
+          : `${readiness.done}/${readiness.total} ready — missing ${readiness.missing.map((m) => m.materialName || "Material").join(", ")}`;
+        const ok = window.confirm(`⚠ Materials are not fully ready for Assembly.\n\n${sample.name || sample.id}: ${detail}\n\nYou can move it to Assembly anyway, but it will remain flagged as missing materials.\n\nMove anyway?`);
+        if (!ok) return;
+      }
+    }
+    moveStage(sample.id, stage);
   };
 
   const bulkDelete = () => {
@@ -3735,22 +3873,22 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               onDrop={(e) => handleDrop(e, stage)}
               className="sample-kanban-column"
               style={{
-                background: isOver ? "#F8F4EE" : "#FAFAFA",
-                border: `1px solid ${isOver ? "#E2D3BF" : "#E2E5E8"}`,
+                background: "#FFFFFF",
+                border: `1px solid ${isOver ? "#DCC6A9" : "#E3DED7"}`,
                 borderRadius: 14, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
-                boxShadow: isOver ? "0 0 0 2px rgba(220,198,169,.10), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
+                boxShadow: isOver ? "0 0 0 2px rgba(220,198,169,.22), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
               }}
             >
-              <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #E5E7EA", display: "flex", flexDirection: "column", gap: 10, background: "#FFFFFF" }}>
+              <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #E5E7EA", display: "flex", flexDirection: "column", gap: 10, background: "#F5EFE7" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <span style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, background: "#F1F3F5", color: "#4D545C", fontSize: 10.5, fontWeight: 800, flexShrink: 0, border: "1px solid #E0E3E7" }}>{String(stageIndex + 1).padStart(2, "0")}</span>
+                    <span style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, background: "#F5EFE7", color: "#6F6254", fontSize: 10.5, fontWeight: 800, flexShrink: 0, border: "1px solid #E0E3E7" }}>{String(stageIndex + 1).padStart(2, "0")}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "#20252B", lineHeight: 1.2, whiteSpace: "nowrap" }}>{stage}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "#5E5144", lineHeight: 1.2, whiteSpace: "nowrap" }}>{stage}</div>
                       <div style={{ fontSize: 10.5, color: "#7A8189", marginTop: 3 }}>Step {stageIndex + 1} · {Math.round(completion * 100)}% flow</div>
                     </div>
                   </div>
-                  <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#555C64", background: "#F4F5F6", borderRadius: 999, border: "1px solid #E0E3E7", fontWeight: 800 }}>{cards.length}</span>
+                  <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#555C64", background: "#F8F6F2", borderRadius: 999, border: "1px solid #E0E3E7", fontWeight: 800 }}>{cards.length}</span>
                 </div>
                 <div style={{ height: 3, borderRadius: 99, background: "#E7E9EC", overflow: "hidden" }}>
                   <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#DCC6A9" : "#C9CDD2" }} />
@@ -3764,13 +3902,15 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
                     sample={s}
                     customerName={customerName(s.customerId)}
                     onClick={() => onCardClick(s)}
+                    onQuickEdit={() => onQuickEdit?.(s)}
+                    onSaveSample={onSaveSample}
                     onShowQR={() => onShowQR?.(s)}
                     selected={selectedIds.includes(s.id)}
                     onToggleSelect={() => toggleSelected(s.id)}
                     onDragStart={(e) => handleCardDragStart(e, s.id)}
                     onDragEnd={() => setDraggingIds([])}
                     isDragging={draggingIds.includes(s.id)}
-                    onMoveStage={(newStage) => moveStage(s.id, newStage)}
+                    onMoveStage={(newStage) => moveOneStage(s, newStage)}
                     stageTheme={theme}
                     materialReadiness={getMaterialReadiness(s, materialPreps)}
                   />
@@ -3800,10 +3940,51 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
   );
 }
 
-function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect, selected, onDragStart, onDragEnd, isDragging, onMoveStage, stageTheme, materialReadiness }) {
+function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSample, onShowQR, onToggleSelect, selected, onDragStart, onDragEnd, isDragging, onMoveStage, stageTheme, materialReadiness }) {
   const ot = sampleOnTime(s);
   const theme = stageTheme || SAMPLE_STAGE_THEME[normalizeSampleWorkflowStage(s.stage)] || SAMPLE_STAGE_THEME["Request Received"];
   const stage = normalizeSampleWorkflowStage(s.stage);
+  const [quickEditing, setQuickEditing] = useState(false);
+  const [draft, setDraft] = useState({ name: s.name || "", erpNo: s.erpNo || "", qty: s.qty ?? s.quantity ?? 1, nextAction: s.nextAction || "", targetDate: s.targetDate || "" });
+
+  useEffect(() => {
+    if (!quickEditing) setDraft({ name: s.name || "", erpNo: s.erpNo || "", qty: s.qty ?? s.quantity ?? 1, nextAction: s.nextAction || "", targetDate: s.targetDate || "" });
+  }, [s.id, s.name, s.erpNo, s.qty, s.quantity, s.nextAction, s.targetDate, quickEditing]);
+
+  const openQuickEdit = (e) => {
+    e?.stopPropagation();
+    setDraft({ name: s.name || "", erpNo: s.erpNo || "", qty: s.qty ?? s.quantity ?? 1, nextAction: s.nextAction || "", targetDate: s.targetDate || "" });
+    setQuickEditing(true);
+    onQuickEdit?.();
+  };
+  const cancelQuickEdit = (e) => { e?.stopPropagation(); setQuickEditing(false); };
+  const saveQuickEdit = (e) => {
+    e?.stopPropagation();
+    onSaveSample?.({ ...s, ...draft, qty: draft.qty === "" ? "" : Number(draft.qty) || 0 });
+    setQuickEditing(false);
+  };
+
+  if (quickEditing) {
+    return (
+      <div className="sample-kanban-card" style={{ position: "relative", background: "#FFFFFF", border: `1px solid #DCC6A9`, borderRadius: 14, padding: 12, cursor: "default", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0, boxShadow: "0 0 0 2px rgba(220,198,169,.16), 0 8px 22px rgba(17,17,17,.05)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#4D453D" }}>Quick edit sample</div>
+          <span style={{ fontSize: 10.5, color: "#8A7B6B", fontWeight: 700 }}>{s.id}</span>
+        </div>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Sample name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 82px", gap: 7 }}>
+          <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>ERP No.<input value={draft.erpNo} onChange={(e) => setDraft({ ...draft, erpNo: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
+          <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Qty<input type="number" min="0" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
+        </div>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Next action<input value={draft.nextAction} onChange={(e) => setDraft({ ...draft, nextAction: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Target date<input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
+        <div style={{ display: "flex", gap: 7, marginTop: 2 }}>
+          <button type="button" onClick={saveQuickEdit} style={{ flex: 1, border: "1px solid #B79F80", background: "#DCC6A9", color: "#fff", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Save</button>
+          <button type="button" onClick={cancelQuickEdit} style={{ flex: 1, border: "1px solid #DDD7CF", background: "#fff", color: "#5F5851", borderRadius: 9, padding: "8px 10px", fontWeight: 750, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       draggable
@@ -3812,7 +3993,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
       className="sample-kanban-card"
       style={{
         position: "relative",
-        background: selected ? "#F8F5EF" : "rgba(255,255,255,.94)",
+        background: "#FFFFFF",
         border: `1px solid ${selected ? theme.accent : "rgba(17,17,17,.075)"}`,
         borderRadius: 14,
         padding: 11,
@@ -3838,7 +4019,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
         {selected ? <CheckSquare size={14} /> : <Square size={14} />}
       </button>
       <div style={{ display: "flex", gap: 11, minWidth: 0 }}>
-        <div onClick={onClick} style={{ position: "relative", width: 70, height: 70, borderRadius: 11, marginLeft: 26, background: theme.soft, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: `1px solid ${theme.border}` }}>
+        <div onClick={onClick} style={{ position: "relative", width: 70, height: 70, borderRadius: 11, marginLeft: 26, background: "#F6F4F1", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: "1px solid #E4E0DA" }}>
           {s.image ? (
             <img src={s.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; }} />
           ) : (
@@ -3858,7 +4039,7 @@ function KanbanCard({ sample: s, customerName, onClick, onShowQR, onToggleSelect
                 {s.erpNo ? s.erpNo : "No ERP code"}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}><button type="button" className="kanban-icon-button" title="Show sample QR" aria-label="Show sample QR" onClick={(e) => { e.stopPropagation(); onShowQR?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><QrCodeIcon size={14} /></button><button type="button" className="kanban-icon-button" title="Edit sample" aria-label="Edit sample" onClick={(e) => { e.stopPropagation(); onClick?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><Pencil size={14} /></button></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}><button type="button" className="kanban-icon-button" title="Show sample QR" aria-label="Show sample QR" onClick={(e) => { e.stopPropagation(); onShowQR?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><QrCodeIcon size={14} /></button><button type="button" className="kanban-icon-button" title="Quick edit sample" aria-label="Quick edit sample" onClick={openQuickEdit} onMouseDown={(e) => e.stopPropagation()} draggable={false}><Pencil size={14} /></button></div>
           </div>
           <div className="kanban-meta" style={{ marginTop: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customerName || "—"}</div>
         </div>
