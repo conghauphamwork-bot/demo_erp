@@ -16,6 +16,9 @@ export async function signIn(email, password) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error_description || data.msg || data.message || "Login failed.");
+  // Keep an explicit expiry timestamp so the app does not refresh a fresh token
+  // immediately on first load.
+  if (data?.expires_in && !data.expires_at) data.expires_at = Math.floor(Date.now() / 1000) + Number(data.expires_in);
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
   return data;
 }
@@ -27,13 +30,24 @@ export function getAuthSession() {
 export async function refreshAuthSession() {
   const current = getAuthSession();
   if (!current?.refresh_token) return null;
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
     method: "POST",
     headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: current.refresh_token }),
+    signal: controller.signal,
   });
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) { localStorage.removeItem(AUTH_STORAGE_KEY); return null; }
   const data = await res.json();
+  if (data?.expires_in && !data.expires_at) data.expires_at = Math.floor(Date.now() / 1000) + Number(data.expires_in);
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
   return data;
 }
@@ -41,11 +55,20 @@ export async function refreshAuthSession() {
 export async function getCurrentUser() {
   const session = getAuthSession();
   if (!session?.access_token) return null;
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function signOut() {
@@ -58,11 +81,39 @@ export async function signOut() {
   localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
-export async function getMyProfile() {
-  const user = await getCurrentUser();
-  if (!user?.id) return null;
-  const rows = await request(`profiles?id=eq.${encodeURIComponent(user.id)}&select=*`);
-  return rows?.[0] || null;
+export async function getMyProfile(userId = null) {
+  // Prefer the user id already returned by Supabase during password login.
+  // This avoids an extra /auth/v1/user request that can leave the UI waiting
+  // on some deployments/network conditions.
+  const session = getAuthSession();
+  const id = userId || session?.user?.id || null;
+  if (!id) return null;
+  return requestWithTimeout(`profiles?id=eq.${encodeURIComponent(id)}&select=*`, {}, 8000)
+    .then((rows) => rows?.[0] || null);
+}
+
+async function requestWithTimeout(path, options = {}, timeoutMs = 8000) {
+  assertConfigured();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${getAuthSession()?.access_token || SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      ...options.headers,
+    };
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...options, headers, signal: controller.signal });
+    const text = await res.text();
+    if (!res.ok) {
+      let message = text;
+      try { message = JSON.parse(text)?.message || JSON.parse(text)?.hint || text; } catch (_) {}
+      throw new Error(`Supabase ${res.status}: ${message}`);
+    }
+    return text ? JSON.parse(text) : null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function authHeaders() {

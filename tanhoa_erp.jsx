@@ -760,14 +760,20 @@ function AuthGate() {
   const [session, setSession] = useState(() => getAuthSession());
   const [profile, setProfile] = useState(null);
   const [checking, setChecking] = useState(true);
+  const [authError, setAuthError] = useState("");
 
   const loadAuth = useCallback(async () => {
     setChecking(true);
     try {
       let next = getAuthSession();
-      if (next?.refresh_token) next = await refreshAuthSession() || next;
+      // Do not refresh a freshly issued access token on every page load.
+      // Refresh only when it is close to expiry. This avoids the app getting
+      // stuck on the auth-loading screen when a refresh request is delayed.
+      const expiresAt = Number(next?.expires_at || 0);
+      const shouldRefresh = Boolean(next?.refresh_token) && (!expiresAt || expiresAt <= Math.floor(Date.now() / 1000) + 60);
+      if (shouldRefresh) next = await refreshAuthSession() || next;
       if (!next?.access_token) { setSession(null); setProfile(null); return; }
-      const p = await getMyProfile();
+      const p = await getMyProfile(next?.user?.id);
       if (!p || p.is_active === false) { await signOut(); setSession(null); setProfile(null); return; }
       setSession(next);
       setProfile(p);
@@ -775,12 +781,13 @@ function AuthGate() {
       console.error("Auth check failed", e);
       await signOut();
       setSession(null); setProfile(null);
+      setAuthError(e?.message || "Unable to verify your account.");
     } finally { setChecking(false); }
   }, []);
 
   useEffect(() => { loadAuth(); }, [loadAuth]);
   if (checking) return <AuthLoading />;
-  if (!session || !profile) return <LoginScreen onLogin={loadAuth} />;
+  if (!session || !profile) return <LoginScreen onLogin={loadAuth} initialError={authError} />;
   return <AppInner currentUser={profile} onLogout={async () => { await signOut(); setSession(null); setProfile(null); }} />;
 }
 
@@ -788,11 +795,11 @@ function AuthLoading() {
   return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: COLORS.bg, fontFamily: FONT_BODY, color: COLORS.inkSoft }}>Loading Tân Hòa ERP…</div>;
 }
 
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, initialError = "" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError("");
     try { await signIn(email.trim(), password); await onLogin(); }
