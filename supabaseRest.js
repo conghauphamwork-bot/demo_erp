@@ -131,26 +131,73 @@ export async function uploadStorageImage(file, folder, prefix = "image") {
   if (!file || !file.type || !file.type.startsWith("image/")) {
     throw new Error("Please choose an image file.");
   }
+  const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error("Please choose an image smaller than 15 MB.");
+  }
+
   const extension = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
   const safeFolder = String(folder || "general").replace(/[^a-zA-Z0-9_-]/g, "_");
   const safePrefix = String(prefix || "image").replace(/[^a-zA-Z0-9_-]/g, "_");
   const path = `${safeFolder}/${safePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storageObjectPath(path)}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${getAuthSession()?.access_token || SUPABASE_ANON_KEY}`,
-      "x-upsert": "false",
-      "cache-control": "3600",
-    },
-    body: file,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let message = text;
-    try { message = JSON.parse(text)?.message || JSON.parse(text)?.error || JSON.parse(text)?.statusCode || text; } catch (_) {}
-    throw new Error(`Supabase Storage ${res.status}: ${message}`);
+
+  const uploadOnce = async (accessToken) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storageObjectPath(path)}`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${accessToken}`,
+          "x-upsert": "false",
+          "cache-control": "3600",
+          "Content-Type": file.type,
+        },
+        body: file,
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        let detail = text;
+        try {
+          const json = JSON.parse(text);
+          detail = json?.message || json?.error || json?.statusCode || text;
+        } catch (_) {}
+        const err = new Error(`Supabase Storage ${res.status}: ${detail}`);
+        err.status = res.status;
+        throw err;
+      }
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const current = getAuthSession();
+  if (!current?.access_token) {
+    throw new Error("You must be signed in before uploading images.");
   }
+
+  try {
+    await uploadOnce(current.access_token);
+  } catch (err) {
+    // A rotated/expired JWT can cause a Storage 401. Refresh once and retry
+    // using the new authenticated token; never fall back to the public anon key
+    // for writes because that would bypass the app's RBAC boundary.
+    if (err?.status === 401) {
+      const refreshed = await refreshAuthSession();
+      if (!refreshed?.access_token) throw new Error("Your login session has expired. Please sign in again.");
+      await uploadOnce(refreshed.access_token);
+    } else if (err?.status === 403) {
+      throw new Error("Storage permission denied. Run the Tân Hòa Storage/RBAC migration once in Supabase SQL Editor, then sign in again.");
+    } else if (err?.name === "AbortError") {
+      throw new Error("Image upload timed out after 15 seconds. Please try again with a smaller image or better connection.");
+    } else {
+      throw err;
+    }
+  }
+
   return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${storageObjectPath(path)}`;
 }
 
@@ -314,6 +361,7 @@ export const adapters = {
   // image_url can never leak into a master-table POST/UPSERT and trigger
   // PostgREST schema-cache errors (PGRST204).
   masters: (x) => ({ id: x.id, code: x.code || "", name: x.name || "" }),
+  colorMasters: (x) => ({ id: x.id, code: x.code || "", name: x.name || "", image_url: nullify(x.image) }),
 };
 
 export async function saveSampleChildren(sample) {

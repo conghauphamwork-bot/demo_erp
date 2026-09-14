@@ -252,6 +252,8 @@ const MATERIAL_LIST_TABS = [
   { key: "cemboardColors", label: "Cemboard Colors", prefix: "CBC", seed: SEED_CEMBOARD_COLORS },
 ];
 
+const COLOR_MASTER_KEYS = new Set(["finishes", "fabricColors", "ropeColors", "cemboardColors"]);
+
 /* Default shape for a sample — used to backfill older saved records
    that predate newer fields, without losing any data the user already entered. */
 const BLANK_SAMPLE = {
@@ -1017,10 +1019,10 @@ function levelCan(level, module, action = "view") {
       setMaterialLists((prev) => ({ ...prev, [key]: next }));
       const table = { productTypes: "product_types", mainMaterials: "main_materials", finishes: "finishes", woodSurface: "wood_surface_treatments", fabricTypes: "fabric_types", fabricColors: "fabric_colors", ropeTypes: "rope_types", ropeColors: "rope_colors", cemboardColors: "cemboard_colors" }[key];
       if (!table) return;
-      // All material-master tables currently share the same Supabase schema:
-      // id + code + name. Do not send UI-only fields (for example image_url)
-      // unless the corresponding DB column is explicitly migrated first.
-      saveCollection(table, materialLists[key] || [], next, adapters.masters).catch((e) => alert("Material master save failed: " + e.message));
+      // Color masters have a real image_url column after the v44 migration.
+      // All other master tables stay strict at id + code + name.
+      const adapter = COLOR_MASTER_KEYS.has(key) ? adapters.colorMasters : adapters.masters;
+      saveCollection(table, materialLists[key] || [], next, adapter).catch((e) => alert("Material master save failed: " + e.message));
     },
   };
 
@@ -3227,7 +3229,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
     const tab = MATERIAL_LIST_TABS.find((t) => t.key === listKey);
     const list = materialLists[listKey] || [];
     const id = nextId(list, tab.prefix, 4);
-    saveMaterialList(listKey, [...list, { id, code: "", name }]);
+    saveMaterialList(listKey, [...list, { id, code: "", name, ...(COLOR_MASTER_KEYS.has(listKey) ? { image: "" } : {}) }]);
     return id;
   };
 
@@ -3245,7 +3247,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       let id = String(raw.id || "").trim();
       if (!id && code && byCode.has(code.toLowerCase())) id = byCode.get(code.toLowerCase());
       if (!id) id = nextId(generated, tab.prefix, 4);
-      const item = { id, code, name };
+      const item = { id, code, name, ...(COLOR_MASTER_KEYS.has(listKey) ? { image: String(raw.image || "").trim() } : {}) };
       const idx = generated.findIndex((m) => m.id === id);
       if (idx >= 0) generated[idx] = { ...generated[idx], ...item };
       else generated.push(item);
@@ -4896,8 +4898,9 @@ function MaterialImportModal({ tab, existingList, onImport, onClose }) {
     const idIdx = materialImportField(headers, ["ID", "Material ID", "Master ID", "Code ID"]);
     const codeIdx = materialImportField(headers, ["Code", "Material Code", "Master Code", "Item Code"]);
     const nameIdx = materialImportField(headers, ["Name", "Material Name", "Master Name", "Description", "Material"]);
+    const imageIdx = materialImportField(headers, ["Image URL", "Image", "Photo URL", "Photo"]);
     if (codeIdx < 0 && nameIdx < 0) throw new Error("Could not find Code or Name columns. Use headers: ID, Code, Name.");
-    return raw.slice(1).map((r) => ({ id: idIdx >= 0 ? String(r[idIdx] || "").trim() : "", code: codeIdx >= 0 ? String(r[codeIdx] || "").trim() : "", name: nameIdx >= 0 ? String(r[nameIdx] || "").trim() : "" })).filter((r) => r.id || r.code || r.name);
+    return raw.slice(1).map((r) => ({ id: idIdx >= 0 ? String(r[idIdx] || "").trim() : "", code: codeIdx >= 0 ? String(r[codeIdx] || "").trim() : "", name: nameIdx >= 0 ? String(r[nameIdx] || "").trim() : "", image: imageIdx >= 0 ? String(r[imageIdx] || "").trim() : "" })).filter((r) => r.id || r.code || r.name);
   };
 
   const readXlsx = async (f) => {
@@ -4909,11 +4912,12 @@ function MaterialImportModal({ tab, existingList, onImport, onClose }) {
     const idCol = materialImportField(headers, ["ID", "Material ID", "Master ID", "Code ID"]);
     const codeCol = materialImportField(headers, ["Code", "Material Code", "Master Code", "Item Code"]);
     const nameCol = materialImportField(headers, ["Name", "Material Name", "Master Name", "Description", "Material"]);
+    const imageCol = materialImportField(headers, ["Image URL", "Image", "Photo URL", "Photo"]);
     if (codeCol < 0 && nameCol < 0) throw new Error("Could not find Code or Name columns. Use headers: ID, Code, Name.");
     return parsed.rows.slice(1).map((r) => {
       const cells = r.cells || {};
       const vals = headerCols.map((c) => cells[c] ?? "");
-      return { id: idCol >= 0 ? String(vals[idCol] || "").trim() : "", code: codeCol >= 0 ? String(vals[codeCol] || "").trim() : "", name: nameCol >= 0 ? String(vals[nameCol] || "").trim() : "" };
+      return { id: idCol >= 0 ? String(vals[idCol] || "").trim() : "", code: codeCol >= 0 ? String(vals[codeCol] || "").trim() : "", name: nameCol >= 0 ? String(vals[nameCol] || "").trim() : "", image: imageCol >= 0 ? String(vals[imageCol] || "").trim() : "" };
     }).filter((r) => r.id || r.code || r.name);
   };
 
@@ -4984,6 +4988,7 @@ function MaterialsView({ materialLists, saveList }) {
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState("");
+  const [imageUploading, setImageUploading] = useState(false);
 
   const tab = MATERIAL_LIST_TABS.find((t) => t.key === activeTab);
   const list = materialLists[activeTab] || [];
@@ -4992,14 +4997,31 @@ function MaterialsView({ materialLists, saveList }) {
     return !q || [m.id, m.code, m.name].some((v) => String(v || "").toLowerCase().includes(q));
   });
 
-  const startNew = () => { setEditing({ id: "", code: "", name: "" }); setShowForm(true); };
+  const isColorMaster = COLOR_MASTER_KEYS.has(activeTab);
+  const startNew = () => { setEditing({ id: "", code: "", name: "", image: "" }); setShowForm(true); };
   const startEdit = (m) => { setEditing({ ...m }); setShowForm(true); };
+  const handleMasterImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !isColorMaster) return;
+    setImageUploading(true);
+    try {
+      const folder = `${activeTab}/masters`;
+      const publicUrl = await uploadStorageImage(file, folder, `${tab.prefix.toLowerCase()}-color`);
+      setEditing((current) => current ? { ...current, image: publicUrl } : current);
+    } catch (err) {
+      console.error("Material image upload failed:", err);
+      alert(err?.message || "Could not upload this material image.");
+    } finally {
+      setImageUploading(false);
+    }
+  };
   const remove = (id) => { if (!confirm("Delete this item?")) return; saveList(activeTab, list.filter((m) => m.id !== id)); };
 
   const submit = (e) => {
     e.preventDefault();
     try {
-      const cleaned = { ...editing, id: String(editing.id || "").trim(), code: String(editing.code || "").trim(), name: (editing.name || editing.code || "").trim() || "(unnamed)" };
+      const cleaned = { ...editing, id: String(editing.id || "").trim(), code: String(editing.code || "").trim(), name: (editing.name || editing.code || "").trim() || "(unnamed)", ...(isColorMaster ? { image: String(editing.image || "").trim() } : {}) };
       if (cleaned.id) {
         saveList(activeTab, list.map((m) => (m.id === cleaned.id ? cleaned : m)));
       } else {
@@ -5026,7 +5048,7 @@ function MaterialsView({ materialLists, saveList }) {
       const codeKey = code.toLowerCase();
       if (!id && codeKey && byCode.has(codeKey)) id = byCode.get(codeKey);
       if (!id) id = nextId(generated, tab.prefix, 4);
-      const item = { id, code, name };
+      const item = { id, code, name, ...(COLOR_MASTER_KEYS.has(activeTab) ? { image: String(raw.image || "").trim() } : {}) };
       const idx = generated.findIndex((m) => m.id === id);
       if (idx >= 0) generated[idx] = { ...generated[idx], ...item };
       else generated.push(item);
@@ -5039,7 +5061,11 @@ function MaterialsView({ materialLists, saveList }) {
     alert(`${rows.length} material row${rows.length === 1 ? "" : "s"} imported into ${tab.label}.`);
   };
 
-  const downloadTemplate = () => downloadCsv(`material-${tab.key}-template.csv`, ["ID", "Code", "Name"], [["", "", ""]]);
+  const downloadTemplate = () => {
+    const headers = isColorMaster ? ["ID", "Code", "Name", "Image URL"] : ["ID", "Code", "Name"];
+    const row = isColorMaster ? [["", "", "", ""]] : [["", "", ""]];
+    downloadCsv(`material-${tab.key}-template.csv`, headers, row);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -5072,6 +5098,19 @@ function MaterialsView({ materialLists, saveList }) {
               <Field label="Code"><Input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value })} /></Field>
               <Field label="Name"><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Required (or same as Code)" /></Field>
             </div>
+            {isColorMaster && (
+              <Field label="Color image">
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  {editing.image ? <img src={editing.image} alt="Color" style={{ width: 58, height: 58, objectFit: "cover", borderRadius: 9, border: `1px solid ${COLORS.line}` }} onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <div style={{ width: 58, height: 58, borderRadius: 9, border: `1px dashed ${COLORS.line}`, display: "grid", placeItems: "center", color: COLORS.inkSoft }}><ImageIcon size={18} /></div>}
+                  <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                    <input id="material-color-image-input" type="file" accept="image/*" onChange={handleMasterImageUpload} style={{ display: "none" }} />
+                    <Button type="button" small variant="subtle" onClick={() => document.getElementById("material-color-image-input")?.click()} disabled={imageUploading}><ImageIcon size={13} /> {imageUploading ? "Uploading…" : editing.image ? "Change image" : "Upload image"}</Button>
+                    {editing.image && <Button type="button" small variant="ghost" onClick={() => setEditing({ ...editing, image: "" })}><X size={13} /> Remove</Button>}
+                  </div>
+                </div>
+                <Input value={editing.image || ""} onChange={(e) => setEditing({ ...editing, image: e.target.value })} placeholder="Or paste image URL…" style={{ marginTop: 8 }} />
+              </Field>
+            )}
             <div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>ID is kept automatically for existing rows. For new rows, the ERP generates the next {tab.prefix} ID.</div>
             <div style={{ display: "flex", gap: 10 }}><Button type="submit">Save</Button><Button type="button" variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button></div>
           </form>
@@ -5079,7 +5118,7 @@ function MaterialsView({ materialLists, saveList }) {
       )}
 
       <Panel>
-        <Table columns={[{ key: "id", label: "ID" }, { key: "code", label: "Code" }, { key: "name", label: "Name" }, { key: "actions", label: "", align: "right", render: (m) => <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}><Button small variant="subtle" onClick={() => startEdit(m)}><Pencil size={13} /> Edit</Button><Button small variant="danger" onClick={() => remove(m.id)}><Trash2 size={13} /> Delete</Button></div> }]} rows={filtered} empty="Nothing added yet — import a material file or use the button above to add one." />
+        <Table columns={[{ key: "id", label: "ID" }, { key: "code", label: "Code" }, { key: "name", label: "Name" }, ...(isColorMaster ? [{ key: "image", label: "Image", render: (m) => m.image ? <img src={m.image} alt="" style={{ width: 42, height: 42, objectFit: "cover", borderRadius: 7, border: `1px solid ${COLORS.line}` }} onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <span style={{ color: COLORS.inkSoft }}>—</span> }] : []), { key: "actions", label: "", align: "right", render: (m) => <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}><Button small variant="subtle" onClick={() => startEdit(m)}><Pencil size={13} /> Edit</Button><Button small variant="danger" onClick={() => remove(m.id)}><Trash2 size={13} /> Delete</Button></div> }]} rows={filtered} empty="Nothing added yet — import a material file or use the button above to add one." />
       </Panel>
 
       {showImport && <MaterialImportModal tab={tab} existingList={list} onImport={handleImport} onClose={() => setShowImport(false)} />}
