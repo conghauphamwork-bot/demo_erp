@@ -26,6 +26,31 @@ async function loadPublicSample(sampleId) {
   return res.json();
 }
 
+// Public reference images for the color/material fields shown on the QR passport.
+// This is intentionally a separate RPC so the existing public passport payload
+// and the permanent QR URL do not need to change.
+async function loadPublicSampleMaterialImages(sampleId) {
+  if (!sampleId) return {};
+  const url = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+  if (!url || !key) return {};
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/get_public_sample_material_images`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ p_sample_id: sampleId }),
+    });
+    if (!res.ok) return {};
+    return (await res.json()) || {};
+  } catch {
+    return {};
+  }
+}
+
 /* ---------------------------------------------------------
    TÂN HÒA OUTDOOR FURNITURE — SALES ERP
    Customers → Quotes → Orders → Samples → Production → Shipping
@@ -4164,23 +4189,22 @@ function PublicSampleError({ message }) {
 
 function SampleQuickViewPublic({ data }) {
   const sample = data || {};
-  const materials = Array.isArray(sample.materials) ? sample.materials : [];
-  const done = materials.filter((m) => String(m.status || "").toLowerCase() === "done").length;
-  const total = materials.length;
-  const percent = total ? Math.round((done / total) * 100) : 0;
-  const missing = materials.filter((m) => String(m.status || "").toLowerCase() !== "done");
-  const stage = sample.stage || "Request Received";
-  const stageIndex = Math.max(0, SAMPLE_STAGES.indexOf(stage));
   const url = samplePublicUrl(sample.id);
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [materialImages, setMaterialImages] = useState({});
+  const [previewImage, setPreviewImage] = useState(null);
+
   useEffect(() => {
     QRCode.toDataURL(url, { width: 180, margin: 1, errorCorrectionLevel: "M" }).then(setQrDataUrl).catch(() => {});
   }, [url]);
 
-  const readinessTone = percent === 100 && total > 0
-    ? { bg: "#EAF7EE", border: "#BFE5CB", text: "#247A45" }
-    : total > 0 ? { bg: "#FFF4E5", border: "#F4D09D", text: "#B45B08" }
-    : { bg: "#F3F4F6", border: "#E0E2E5", text: "#73777D" };
+  useEffect(() => {
+    let active = true;
+    loadPublicSampleMaterialImages(sample.id).then((images) => {
+      if (active) setMaterialImages(images || {});
+    });
+    return () => { active = false; };
+  }, [sample.id]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.ink, padding: "18px 14px 44px" }}>
@@ -4205,54 +4229,15 @@ function SampleQuickViewPublic({ data }) {
             <h1 style={{ fontSize: "clamp(25px, 6vw, 34px)", lineHeight: 1.1, margin: "9px 0 5px", letterSpacing: "-.7px" }}>{sample.name || "Unnamed sample"}</h1>
             <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>{sample.customer || "—"} · {sample.productType || "Sample"}</div>
 
-            <div style={{ marginTop: 22, padding: 16, borderRadius: 16, background: "#FBFBFC", border: `1px solid ${COLORS.line}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                <div><div style={{ fontSize: 11, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: .7, fontWeight: 800 }}>Production status</div><div style={{ fontSize: 18, fontWeight: 850, marginTop: 3 }}>{stage}</div></div>
-                <div style={{ minWidth: 54, textAlign: "right", fontSize: 12, color: COLORS.inkSoft }}>Step<br/><b style={{ fontSize: 15, color: COLORS.ink }}>{stageIndex + 1}/{SAMPLE_STAGES.length}</b></div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${SAMPLE_STAGES.length}, minmax(24px, 1fr))`, gap: 5 }}>
-                {SAMPLE_STAGES.map((st, i) => (
-                  <div key={st} title={st} style={{ height: 7, borderRadius: 99, background: i <= stageIndex ? COLORS.wood : "#E8EAED", opacity: i <= stageIndex ? 1 : .9 }} />
-                ))}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${SAMPLE_STAGES.length}, minmax(24px, 1fr))`, gap: 5, marginTop: 6 }}>
-                {SAMPLE_STAGES.map((st, i) => <div key={st} style={{ fontSize: 8.5, lineHeight: 1.1, color: i === stageIndex ? COLORS.woodDark : COLORS.inkSoft, fontWeight: i === stageIndex ? 800 : 500, textAlign: "center" }}>{i === stageIndex ? st : i === 0 || i === SAMPLE_STAGES.length - 1 ? st.split(" ")[0] : ""}</div>)}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, marginTop: 12 }}>
-              <PublicStat label="ERP No." value={sample.erpNo}/>
-              <PublicStat label="Target date" value={sample.targetDate}/>
-              <PublicStat label="Next action" value={sample.nextAction}/>
-              <PublicStat label="Product type" value={sample.productType}/>
-            </div>
-
-            <div style={{ marginTop: 18, padding: 16, borderRadius: 16, background: readinessTone.bg, border: `1px solid ${readinessTone.border}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                <div><div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: .7, fontWeight: 800, color: readinessTone.text }}>Material readiness</div><div style={{ fontSize: 19, fontWeight: 850, marginTop: 3, color: readinessTone.text }}>{total ? `${percent}% ready` : "No material plan"}</div></div>
-                <div style={{ fontSize: 15, fontWeight: 850, color: readinessTone.text }}>{done}/{total}</div>
-              </div>
-              <div style={{ height: 8, background: "rgba(255,255,255,.8)", borderRadius: 99, marginTop: 11, overflow: "hidden" }}><div style={{ width: `${percent}%`, height: "100%", background: readinessTone.text, borderRadius: 99 }}/></div>
-              {materials.length > 0 && (
-                <div style={{ marginTop: 12, display: "grid", gap: 7 }}>
-                  {materials.map((m, idx) => {
-                    const isDone = String(m.status || "").toLowerCase() === "done";
-                    return <div key={`${m.name || "material"}-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 10px", background: "rgba(255,255,255,.62)", borderRadius: 9 }}><div style={{ minWidth: 0, fontSize: 12.5, fontWeight: 650, overflowWrap: "anywhere" }}>{m.name || "Material"}{m.qty ? <span style={{ color: COLORS.inkSoft, fontWeight: 500 }}> · Qty {m.qty}</span> : null}</div><span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 800, color: isDone ? "#247A45" : "#B45B08" }}>{isDone ? "DONE" : (m.status || "WAITING").toUpperCase()}</span></div>;
-                  })}
-                </div>
-              )}
-              {missing.length > 0 && <div style={{ marginTop: 10, fontSize: 12, color: readinessTone.text }}>Pending: {missing.map((m) => m.name || "Material").join(", ")}</div>}
-            </div>
-
             <div style={{ marginTop: 20 }}>
               <PassportSectionTitle>Product specifications</PassportSectionTitle>
               <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
                 <PassportField label="Main material" value={sample.mainMaterial}/>
-                <PassportField label="Finish / color" value={sample.finish}/>
+                <PassportField label="Finish / color" value={sample.finish} image={materialImages.finish?.image_url} onImageClick={setPreviewImage}/>
                 <PassportField label="Wood treatment" value={sample.woodSurfaceTreatment}/>
-                <PassportField label="Fabric" value={sample.fabric}/>
+                <PassportField label="Fabric" value={sample.fabric} image={materialImages.fabric_color?.image_url} onImageClick={setPreviewImage}/>
                 <PassportField label="Rope" value={sample.rope}/>
-                <PassportField label="Rope color" value={sample.ropeColor}/>
+                <PassportField label="Rope color" value={sample.ropeColor} image={materialImages.rope_color?.image_url} onImageClick={setPreviewImage}/>
                 <PassportField label="Metal" value={sample.metal}/>
                 <PassportField label="Metal color" value={sample.metalColor}/>
                 <PassportField label="Cemboard color" value={sample.cemboardColor}/>
@@ -4281,6 +4266,21 @@ function SampleQuickViewPublic({ data }) {
         </div>
         <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#8A8F96" }}>Tân Hòa Outdoor Furniture · Digital Sample Passport · Read-only</div>
       </div>
+
+      {previewImage?.url && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reference image preview"
+          onClick={() => setPreviewImage(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 120, background: "rgba(17,17,17,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "min(92vw, 900px)", maxHeight: "90vh", background: "#fff", borderRadius: 16, padding: 10, boxShadow: "0 24px 80px rgba(0,0,0,.35)", cursor: "default" }}>
+            <img src={previewImage.url} alt={previewImage.alt || "Material reference"} style={{ display: "block", maxWidth: "calc(92vw - 20px)", maxHeight: "calc(90vh - 20px)", width: "auto", height: "auto", objectFit: "contain", borderRadius: 10 }} />
+            <button type="button" onClick={() => setPreviewImage(null)} aria-label="Close image" style={{ position: "absolute", top: 18, right: 18, width: 34, height: 34, border: "none", borderRadius: 10, background: "rgba(255,255,255,.94)", cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 4px 14px rgba(0,0,0,.15)" }}><X size={17}/></button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4289,8 +4289,22 @@ function PassportSectionTitle({ children }) {
   return <div style={{ fontSize: 12, fontWeight: 850, color: COLORS.wood, textTransform: "uppercase", letterSpacing: .75 }}>{children}</div>;
 }
 
-function PassportField({ label, value }) {
-  return <div style={{ padding: "10px 11px", borderRadius: 10, background: "#FBFBFC", border: `1px solid ${COLORS.line}`, minWidth: 0 }}><div style={{ fontSize: 10.5, color: COLORS.inkSoft }}>{label}</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 700, overflowWrap: "anywhere" }}>{value || "—"}</div></div>;
+function PassportField({ label, value, image, onImageClick }) {
+  return (
+    <div style={{ padding: "10px 11px", borderRadius: 10, background: "#FBFBFC", border: `1px solid ${COLORS.line}`, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, color: COLORS.inkSoft }}>{label}</div>
+          <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 700, overflowWrap: "anywhere" }}>{value || "—"}</div>
+        </div>
+        {image && (
+          <button type="button" onClick={() => onImageClick?.({ url: image, alt: `${label} reference` })} title="View reference image" aria-label={`View ${label} reference image`} style={{ flexShrink: 0, border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 7, padding: 2, cursor: "zoom-in" }}>
+            <img src={image} alt="" style={{ width: 54, height: 44, objectFit: "cover", borderRadius: 5, display: "block" }} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function PassportChip({ label, value }) {
