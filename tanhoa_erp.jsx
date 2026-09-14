@@ -2180,6 +2180,9 @@ const SAMPLE_EXPORT_FIELDS = [
   { key: "completedDate", label: "Completed Date", get: (s) => s.completedDate },
   { key: "overallStatus", label: "Overall Status", get: (s) => s.overallStatus },
   { key: "orderId", label: "Linked Order", get: (s) => s.orderId },
+  { key: "requiredComponents", label: "Required Components", get: (s) => (s.requiredComponents || []).map((c) => `${c.name || "Material"}: Qty ${c.qty ?? 1}`).join(" | ") },
+  { key: "noteHistory", label: "Note History", get: (s) => (s.noteHistory || []).map((n) => `${n.date || ""}: ${n.text || n.note || ""}`).filter(Boolean).join(" | ") },
+  { key: "revisions", label: "Revision History", get: (s) => (s.revisions || []).map((r) => `${r.date || ""}: ${r.changeReason || r.reason || ""}${r.note ? ` — ${r.note}` : ""}`).filter(Boolean).join(" | ") },
   { key: "notes", label: "Notes", get: (s) => s.notes },
   { key: "materialProgress", label: "Material Progress", get: (s, ctx) => {
     const rows = ctx.materialPreps.filter((p) => p.sampleId === s.id);
@@ -2838,11 +2841,11 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
   );
 }
 
-function SampleExportModal({ samples, customers, productTypes, materialLists, materialPreps, initialSampleId, onClose }) {
+function SampleExportModal({ samples, customers, productTypes, materialLists, materialPreps, initialSampleId, selectedSampleIds = [], onClose }) {
   const [selectedKeys, setSelectedKeys] = useState(() => SAMPLE_EXPORT_FIELDS.map((f) => f.key));
   const [fieldSearch, setFieldSearch] = useState("");
   const [filters, setFilters] = useState({});
-  const [scope, setScope] = useState(initialSampleId ? "current" : "all");
+  const [scope, setScope] = useState(initialSampleId ? "current" : (selectedSampleIds.length ? "selected" : "all"));
   const [exporting, setExporting] = useState(false);
 
   const { mainMaterials = [], finishes = [], woodSurface = [], fabricTypes = [], fabricColors = [], ropeTypes = [], ropeColors = [], cemboardColors = [] } = materialLists || {};
@@ -2850,7 +2853,8 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
   const fieldMap = new Map(SAMPLE_EXPORT_FIELDS.map((f) => [f.key, f]));
   const filteredFields = SAMPLE_EXPORT_FIELDS.filter((f) => f.label.toLowerCase().includes(fieldSearch.trim().toLowerCase()));
 
-  const sourceSamples = scope === "current" && initialSampleId ? samples.filter((s) => s.id === initialSampleId) : samples;
+  const selectedIdSet = useMemo(() => new Set(selectedSampleIds || []), [selectedSampleIds]);
+  const sourceSamples = scope === "selected" ? samples.filter((s) => selectedIdSet.has(s.id)) : (scope === "current" && initialSampleId ? samples.filter((s) => s.id === initialSampleId) : samples);
   const visibleSamples = sourceSamples.filter((sample) => SAMPLE_EXPORT_FIELDS.every((field) => {
     const filter = String(filters[field.key] || "").trim().toLowerCase();
     if (!filter) return true;
@@ -2885,7 +2889,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
           }
         }));
       }
-      const result = await downloadExcelWithEmbeddedImages(`tanhoa-samples-${stamp}.xlsx`, headers, rows, embeddedImageColumns);
+      const result = await downloadExcelWithEmbeddedImages(`Sample_Export_${stamp.slice(8,10)}-${stamp.slice(5,7)}-${stamp.slice(2,4)}.xlsx`, headers, rows, embeddedImageColumns);
       const message = result.failedImages
         ? `Excel exported. ${result.embeddedCount} image/QR item(s) embedded; ${result.failedImages} item(s) could not be embedded.`
         : `Excel exported successfully with ${result.embeddedCount} embedded image/QR item(s).`;
@@ -2906,7 +2910,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
         </div>
 
         <div style={{ padding: "14px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <Field label="Export scope" width="auto"><Select value={scope} onChange={(e) => setScope(e.target.value)} style={{ width: 220 }}><option value="all">All samples</option>{initialSampleId && <option value="current">Current sample only</option>}</Select></Field>
+          <Field label="Export scope" width="auto"><Select value={scope} onChange={(e) => setScope(e.target.value)} style={{ width: 220 }}><option value="all">All samples</option>{selectedSampleIds.length > 0 && <option value="selected">Selected samples ({selectedSampleIds.length})</option>}{initialSampleId && <option value="current">Current sample only</option>}</Select></Field>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}><Badge tone="wood">{visibleSamples.length} samples</Badge><Badge tone="green">{selectedKeys.length} fields</Badge><Button small variant="subtle" onClick={resetFilters}>Reset filters</Button></div>
         </div>
 
@@ -3081,6 +3085,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [exportSampleId, setExportSampleId] = useState(null);
+  const [selectedSampleIds, setSelectedSampleIds] = useState([]);
   const [qrSample, setQrSample] = useState(null);
   const [showAIDescription, setShowAIDescription] = useState(false);
   const [materialImportKey, setMaterialImportKey] = useState(null);
@@ -3282,7 +3287,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           <div style={{ width: 46, height: 46, borderRadius: 15, background: "#F7F0E7", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
           <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Samples</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track and manage all sample requests from development to approval.</div></div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => setShowExport(true)}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload sample</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload sample</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button></div>
       </div>
 
       {(() => {
@@ -3588,7 +3593,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         onClose={() => setShowAIDescription(false)}
       />}
       {showImport && <SampleImportModal samples={samples} saveSamples={saveSamples} customers={customers} productTypes={productTypes} materialLists={materialLists} onClose={() => setShowImport(false)} />}
-      {showExport && <SampleExportModal samples={samples} customers={customers} productTypes={productTypes} materialLists={materialLists} materialPreps={materialPreps} initialSampleId={exportSampleId} onClose={() => { setShowExport(false); setExportSampleId(null); }} />}
+      {showExport && <SampleExportModal samples={samples} customers={customers} productTypes={productTypes} materialLists={materialLists} materialPreps={materialPreps} initialSampleId={exportSampleId} selectedSampleIds={selectedSampleIds} onClose={() => { setShowExport(false); setExportSampleId(null); }} />}
       {qrSample && <SampleQRModal sample={qrSample} customerName={customerName(qrSample.customerId)} onClose={() => setQrSample(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -3610,6 +3615,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           onQuickEdit={(s) => { setViewing(null); setShowForm(false); }}
           onSaveSample={(updated) => { saveSamples(samples.map((x) => x.id === updated.id ? updated : x)); }}
           onShowQR={(s) => setQrSample(s)}
+          onSelectionChange={setSelectedSampleIds}
         />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
@@ -3737,7 +3743,7 @@ function materialReadinessTone(readiness) {
   return { bg: "#F3F4F6", color: "#73777D", border: "#E0E2E5" };
 }
 
-function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMove, onBulkDelete, onAddSample, onCardClick, onQuickEdit, onSaveSample, onShowQR }) {
+function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMove, onBulkDelete, onAddSample, onCardClick, onQuickEdit, onSaveSample, onShowQR, onSelectionChange }) {
   const [dragOverStage, setDragOverStage] = useState(null);
   const [draggingIds, setDraggingIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -3759,6 +3765,10 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
   useEffect(() => {
     setSelectedIds((current) => current.filter((id) => visibleIds.includes(id)));
   }, [samples, filterMaterialReadiness]);
+
+  useEffect(() => {
+    onSelectionChange?.(selectedIds.filter((id) => samples.some((s) => s.id === id)));
+  }, [selectedIds, samples, onSelectionChange]);
 
   const toggleSelected = (id) => {
     setSelectedIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
