@@ -126,13 +126,45 @@ function storageObjectPath(path) {
   return String(path || "").split("/").map((part) => encodeURIComponent(part)).join("/");
 }
 
+async function getStorageAccessToken() {
+  let session = getAuthSession();
+  if (!session?.access_token) {
+    throw new Error("You must be signed in before uploading an image.");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = Number(session.expires_at || 0);
+  if (expiresAt && expiresAt - now <= 60 && session.refresh_token) {
+    const refreshed = await refreshAuthSession();
+    session = refreshed || getAuthSession();
+  }
+
+  if (!session?.access_token) {
+    throw new Error("Your login session has expired. Please sign in again and retry the upload.");
+  }
+  return session.access_token;
+}
+
+async function storageUploadRequest(path, file, accessToken) {
+  return fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storageObjectPath(path)}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+      "x-upsert": "false",
+      "cache-control": "3600",
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+}
+
 export async function uploadStorageImage(file, folder, prefix = "image") {
   assertConfigured();
   if (!file || !file.type || !file.type.startsWith("image/")) {
     throw new Error("Please choose an image file.");
   }
-  const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
-  if (file.size > MAX_IMAGE_BYTES) {
+  if (file.size > 15 * 1024 * 1024) {
     throw new Error("Please choose an image smaller than 15 MB.");
   }
 
@@ -141,64 +173,57 @@ export async function uploadStorageImage(file, folder, prefix = "image") {
   const safePrefix = String(prefix || "image").replace(/[^a-zA-Z0-9_-]/g, "_");
   const path = `${safeFolder}/${safePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
 
-  const uploadOnce = async (accessToken) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
-    try {
-      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storageObjectPath(path)}`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${accessToken}`,
-          "x-upsert": "false",
-          "cache-control": "3600",
-          "Content-Type": file.type,
-        },
-        body: file,
-        signal: controller.signal,
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        let detail = text;
-        try {
-          const json = JSON.parse(text);
-          detail = json?.message || json?.error || json?.statusCode || text;
-        } catch (_) {}
-        const err = new Error(`Supabase Storage ${res.status}: ${detail}`);
-        err.status = res.status;
-        throw err;
-      }
-      return true;
-    } finally {
-      clearTimeout(timer);
-    }
-  };
+  let accessToken = await getStorageAccessToken();
+  let res = await storageUploadRequest(path, file, accessToken);
 
-  const current = getAuthSession();
-  if (!current?.access_token) {
-    throw new Error("You must be signed in before uploading images.");
+  // A session can expire between the token check and the actual upload.
+  // Refresh once for 401/expired-session responses; do not blindly retry RLS
+  // policy failures because those require a database/storage policy fix.
+  if (res.status === 401) {
+    const refreshed = await refreshAuthSession();
+    if (refreshed?.access_token) {
+      accessToken = refreshed.access_token;
+      res = await storageUploadRequest(path, file, accessToken);
+    }
   }
 
-  try {
-    await uploadOnce(current.access_token);
-  } catch (err) {
-    // A rotated/expired JWT can cause a Storage 401. Refresh once and retry
-    // using the new authenticated token; never fall back to the public anon key
-    // for writes because that would bypass the app's RBAC boundary.
-    if (err?.status === 401) {
-      const refreshed = await refreshAuthSession();
-      if (!refreshed?.access_token) throw new Error("Your login session has expired. Please sign in again.");
-      await uploadOnce(refreshed.access_token);
-    } else if (err?.status === 403) {
-      throw new Error("Storage permission denied. Run the Tân Hòa Storage/RBAC migration once in Supabase SQL Editor, then sign in again.");
-    } else if (err?.name === "AbortError") {
-      throw new Error("Image upload timed out after 15 seconds. Please try again with a smaller image or better connection.");
-    } else {
-      throw err;
+  if (!res.ok) {
+    const text = await res.text();
+    let details = text;
+    try {
+      const body = JSON.parse(text);
+      details = body?.message || body?.error || body?.statusCode || text;
+    } catch (_) {}
+
+    if (res.status === 401) {
+      throw new Error("Your login session is no longer valid. Please sign out, sign in again, and retry the upload.");
     }
+    if (res.status === 403 || /row-level security|violates row-level security policy/i.test(details)) {
+      throw new Error("Supabase Storage permission denied. Run the Tân Hòa storage/RLS migration once, then retry the upload.");
+    }
+    throw new Error(`Supabase Storage ${res.status}: ${details}`);
   }
 
   return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${storageObjectPath(path)}`;
+}
+
+export async function deleteStorageImage(publicUrlOrPath) {
+  assertConfigured();
+  const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+  const raw = String(publicUrlOrPath || "");
+  const path = raw.includes(marker) ? decodeURIComponent(raw.split(marker)[1]) : raw.replace(/^\/+/, "");
+  if (!path || path.includes("..")) return false;
+
+  const accessToken = await getStorageAccessToken();
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storageObjectPath(path)}`, {
+    method: "DELETE",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Supabase Storage ${res.status}: ${text || "Could not delete image."}`);
+  }
+  return true;
 }
 
 function assertConfigured() {
@@ -260,15 +285,18 @@ export async function syncArray(table, previous, next, toRow) {
   await upsertRows(table, rows);
 }
 
-export async function loadWorkspace() {
-  const [customers, samples, quotes, orders, shipments, components, notes, revisions, tasks,
-    productTypes, mainMaterials, finishes, woodSurface, fabricTypes, fabricColors, ropeTypes, ropeColors, cemboardColors,
-  ] = await Promise.all([
+export async function loadWorkspace(userLevel = 3) {
+  const level = Number(userLevel ?? 3);
+  // Only Level 0 is allowed to read Quotes/Orders/Shipments. Avoid requesting
+  // intentionally forbidden tables for lower levels; one 403 must not abort
+  // the whole workspace Promise.all().
+  const canLoadSalesRecords = level === 0;
+
+  const [customers, samples, components, notes, revisions, tasks,
+    productTypes, mainMaterials, finishes, woodSurface, fabricTypes, fabricColors,
+    ropeTypes, ropeColors, cemboardColors, quotes, orders, shipments] = await Promise.all([
     selectAll("customers"),
     selectAll("samples"),
-    loadJsonRecords("quote"),
-    loadJsonRecords("order"),
-    loadJsonRecords("shipment"),
     selectAll("sample_components"),
     selectAll("sample_notes"),
     selectAll("sample_revisions"),
@@ -282,6 +310,9 @@ export async function loadWorkspace() {
     selectAll("rope_types"),
     selectAll("rope_colors"),
     selectAll("cemboard_colors"),
+    canLoadSalesRecords ? loadJsonRecords("quote") : Promise.resolve([]),
+    canLoadSalesRecords ? loadJsonRecords("order") : Promise.resolve([]),
+    canLoadSalesRecords ? loadJsonRecords("shipment") : Promise.resolve([]),
   ]);
 
   const noteMap = groupBy(sampleNotesToApp(notes), "sampleId");
