@@ -5123,7 +5123,7 @@ function MaterialsView({ materialLists, saveList }) {
         <Table columns={[
           { key: "id", label: "ID" },
           { key: "code", label: "Code" },
-          ...(supportsReferenceImage ? [{ key: "image", label: "Image", render: (m) => m.image ? <img src={m.image} alt="Reference" style={{ width: 42, height: 32, objectFit: "cover", borderRadius: 6, border: `1px solid ${COLORS.line}` }} /> : <span style={{ color: COLORS.inkSoft }}>—</span> }] : []),
+          ...(supportsReferenceImage ? [{ key: "image", label: "Image", render: (m) => m.image ? <img src={m.image} alt="Reference" style={{ width: 42, height: 32, objectFit: "cover", borderRadius: 6, border: `1px solid ${COLORS.line}` }} /> : <span style={{ color: COLORS.inkSoft }}>No image</span> }] : []),
           { key: "name", label: "Name" },
           { key: "actions", label: "", align: "right", render: (m) => <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}><Button small variant="subtle" onClick={() => startEdit(m)}><Pencil size={13} /> Edit</Button><Button small variant="danger" onClick={() => remove(m.id)}><Trash2 size={13} /> Delete</Button></div> }
         ]} rows={filtered} empty="Nothing added yet — import a material file or use the button above to add one." />
