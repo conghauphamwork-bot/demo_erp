@@ -575,9 +575,11 @@ function ComboSelect({ value, onChange, options, onAddNew, emptyLabel, showAddNe
   );
 }
 
-function MaterialPicker({ label, value, onChange, options, onAddNew, onImport }) {
+function MaterialPicker({ label, value, onChange, options, onAddNew, onImport, showReferenceImage = false }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
+  const selected = options.find((o) => String(o.id) === String(value));
+  const referenceImage = selected?.image || "";
   const addNow = () => {
     const name = draft.trim();
     if (!name) return;
@@ -588,7 +590,23 @@ function MaterialPicker({ label, value, onChange, options, onAddNew, onImport })
   };
   return (
     <div style={{ display: "grid", gap: 6 }}>
-      <ComboSelect value={value} onChange={onChange} options={options} onAddNew={onAddNew} showAddNew={false} />
+      {showReferenceImage ? (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 112px", gap: 10, alignItems: "stretch" }}>
+          <ComboSelect value={value} onChange={onChange} options={options} onAddNew={onAddNew} showAddNew={false} />
+          <div style={{ minHeight: 42, border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#FAFAF8", padding: 5, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }} title={referenceImage ? `Reference image: ${selected?.code || selected?.name || "selected color"}` : "No reference image"}>
+            {referenceImage ? (
+              <img src={referenceImage} alt={`${selected?.code || selected?.name || label} reference`} style={{ width: "100%", height: 66, objectFit: "cover", borderRadius: 6, display: "block" }} />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, color: COLORS.inkSoft, fontSize: 10.5, lineHeight: 1.2, textAlign: "center" }}>
+                <ImageIcon size={15} />
+                <span>No image</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <ComboSelect value={value} onChange={onChange} options={options} onAddNew={onAddNew} showAddNew={false} />
+      )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
         {adding ? (
           <>
@@ -3402,15 +3420,15 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
             <SectionHeading>Materials & finishes</SectionHeading>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
               <Field label="Main material"><MaterialPicker label="Main material" value={editing.mainMaterialId} onChange={(v) => setEditing({ ...editing, mainMaterialId: v })} options={mainMaterials} onAddNew={(name) => addMaterialListItem("mainMaterials", name)} onImport={() => setMaterialImportKey("mainMaterials")} /></Field>
-              <Field label="Finish / color"><MaterialPicker label="Finish / color" value={editing.finishesColorId} onChange={(v) => setEditing({ ...editing, finishesColorId: v })} options={finishes} onAddNew={(name) => addMaterialListItem("finishes", name)} onImport={() => setMaterialImportKey("finishes")} /></Field>
+              <Field label="Finish / color"><MaterialPicker label="Finish / color" value={editing.finishesColorId} onChange={(v) => setEditing({ ...editing, finishesColorId: v })} options={finishes} onAddNew={(name) => addMaterialListItem("finishes", name)} onImport={() => setMaterialImportKey("finishes")} showReferenceImage /></Field>
               <Field label="Wood surface treatment"><MaterialPicker label="Wood surface treatment" value={editing.woodSurfaceTreatmentId} onChange={(v) => setEditing({ ...editing, woodSurfaceTreatmentId: v })} options={woodSurface} onAddNew={(name) => addMaterialListItem("woodSurface", name)} onImport={() => setMaterialImportKey("woodSurface")} /></Field>
               <Field label="Fabric type"><MaterialPicker label="Fabric type" value={editing.fabricTypeId} onChange={(v) => setEditing({ ...editing, fabricTypeId: v })} options={fabricTypes} onAddNew={(name) => addMaterialListItem("fabricTypes", name)} onImport={() => setMaterialImportKey("fabricTypes")} /></Field>
-              <Field label="Fabric color"><MaterialPicker label="Fabric color" value={editing.fabricColorId} onChange={(v) => setEditing({ ...editing, fabricColorId: v })} options={fabricColors} onAddNew={(name) => addMaterialListItem("fabricColors", name)} onImport={() => setMaterialImportKey("fabricColors")} /></Field>
+              <Field label="Fabric color"><MaterialPicker label="Fabric color" value={editing.fabricColorId} onChange={(v) => setEditing({ ...editing, fabricColorId: v })} options={fabricColors} onAddNew={(name) => addMaterialListItem("fabricColors", name)} onImport={() => setMaterialImportKey("fabricColors")} showReferenceImage /></Field>
               <Field label="Rope type"><MaterialPicker label="Rope type" value={editing.ropeTypeId} onChange={(v) => setEditing({ ...editing, ropeTypeId: v })} options={ropeTypes} onAddNew={(name) => addMaterialListItem("ropeTypes", name)} onImport={() => setMaterialImportKey("ropeTypes")} /></Field>
               <Field label="Rope diameter (mm)">
                 <Input type="number" value={editing.ropeDiameter} onChange={set("ropeDiameter")} />
               </Field>
-              <Field label="Rope color"><MaterialPicker label="Rope color" value={editing.ropeColorId} onChange={(v) => setEditing({ ...editing, ropeColorId: v })} options={ropeColors} onAddNew={(name) => addMaterialListItem("ropeColors", name)} onImport={() => setMaterialImportKey("ropeColors")} /></Field>
+              <Field label="Rope color"><MaterialPicker label="Rope color" value={editing.ropeColorId} onChange={(v) => setEditing({ ...editing, ropeColorId: v })} options={ropeColors} onAddNew={(name) => addMaterialListItem("ropeColors", name)} onImport={() => setMaterialImportKey("ropeColors")} showReferenceImage /></Field>
               <Field label="Metal name">
                 <Input value={editing.metalName} onChange={set("metalName")} />
               </Field>
