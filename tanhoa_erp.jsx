@@ -280,9 +280,10 @@ const MATERIAL_LIST_TABS = [
 /* Default shape for a sample — used to backfill older saved records
    that predate newer fields, without losing any data the user already entered. */
 const BLANK_SAMPLE = {
-  id: "", customerId: "", name: "", productTypeId: "", qty: "",
+  id: "", customerId: "", name: "", productTypeId: "", qty: "", designFrom: "TanHoa", productStatus: "",
   erpNo: "", manufacturingOrderNo: "", idpNo: "", idcNo: "",
   width: "", depth: "", height: "", armHeight: "", seatHeight: "",
+  cartonLength: "", cartonWidth: "", cartonHeight: "", pcsPerCtn: "", cartonQty: "", netWeight: "", grossWeight: "", cbm: "",
   mainMaterialId: "", finishesColorId: "", woodSurfaceTreatmentId: "",
   fabricTypeId: "", fabricColorId: "", ropeTypeId: "", ropeDiameter: "",
   ropeColorId: "", metalName: "", metalColor: "", cemboardColorId: "",
@@ -295,8 +296,19 @@ const BLANK_SAMPLE = {
   orderId: "",
 };
 
+function calculatePackagingValues(sample) {
+  const qty = Number(sample?.qty);
+  const pcsPerCtn = Number(sample?.pcsPerCtn);
+  const cartonQty = Number.isFinite(qty) && qty > 0 && Number.isFinite(pcsPerCtn) && pcsPerCtn > 0 ? Math.ceil(qty / pcsPerCtn) : "";
+  const l = Number(sample?.cartonLength), w = Number(sample?.cartonWidth), h = Number(sample?.cartonHeight);
+  const cbm = cartonQty !== "" && [l, w, h].every((v) => Number.isFinite(v) && v > 0) ? (l * w * h / 1e9) * cartonQty : "";
+  return { cartonQty, cbm };
+}
+
 function normalizeSample(s) {
-  return { ...BLANK_SAMPLE, ...s, requiredComponents: s.requiredComponents || [], noteHistory: s.noteHistory || [], revisions: s.revisions || [] };
+  const merged = { ...BLANK_SAMPLE, ...s, requiredComponents: s.requiredComponents || [], noteHistory: s.noteHistory || [], revisions: s.revisions || [] };
+  const packaging = calculatePackagingValues(merged);
+  return { ...merged, cartonQty: packaging.cartonQty !== "" ? packaging.cartonQty : merged.cartonQty, cbm: packaging.cbm !== "" ? packaging.cbm : merged.cbm };
 }
 
 const BLANK_TASK = {
@@ -819,7 +831,7 @@ class ErrorBoundary extends React.Component {
 
 export default function App() {
   const qrSampleId = new URLSearchParams(window.location.search).get("sample") || "";
-  // Public Sample Passport stays accessible without login.
+  // Public Product Passport stays accessible without login.
   if (qrSampleId) {
     return (
       <ErrorBoundary>
@@ -954,7 +966,7 @@ function levelCan(level, module, action = "view") {
           else setPublicSample(data);
         } catch (err) {
           console.error("Public sample load failed", err);
-          setPublicSampleError("Could not load this sample. Please check the QR link or contact Tân Hòa.");
+          setPublicSampleError("Could not load this product. Please check the QR link or contact Tân Hòa.");
         } finally {
           setLoaded(true);
         }
@@ -1133,7 +1145,7 @@ function levelCan(level, module, action = "view") {
     { key: "customers", label: "Customers", icon: Users, module: "customers" },
     { key: "quotes", label: "Quotes", icon: FileText, module: "quotes" },
     { key: "orders", label: "Orders", icon: ShoppingCart, module: "orders" },
-    { key: "samples", label: "Samples", icon: Boxes, module: "samples" },
+    { key: "samples", label: "Products", icon: Boxes, module: "samples" },
     { key: "tasks", label: "Tasks", icon: ListTodo, module: "tasks" },
     { key: "calendar", label: "Calendar", icon: CalendarDays, module: "calendar" },
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
@@ -2182,12 +2194,14 @@ function OrdersView({ orders, saveOrders, customers, customerName, samples }) {
 /* ---------------- Sample export ---------------- */
 
 const SAMPLE_EXPORT_FIELDS = [
-  { key: "id", label: "Sample ID", get: (s) => s.id },
+  { key: "id", label: "Product ID", get: (s) => s.id },
   { key: "erpNo", label: "ERP Code", get: (s) => s.erpNo },
-  { key: "name", label: "Sample Name", get: (s) => s.name },
+  { key: "name", label: "Product Name", get: (s) => s.name },
   { key: "customer", label: "Customer", get: (s, ctx) => ctx.customerName(s.customerId) },
   { key: "productType", label: "Product Type", get: (s, ctx) => ctx.productTypeName(s.productTypeId) },
   { key: "qty", label: "Qty", get: (s) => s.qty },
+  { key: "designFrom", label: "Design From", get: (s) => s.designFrom },
+  { key: "productStatus", label: "Product Status", get: (s) => s.productStatus },
   { key: "manufacturingOrderNo", label: "Manufacturing Order No.", get: (s) => s.manufacturingOrderNo },
   { key: "idpNo", label: "IDP No.", get: (s) => s.idpNo },
   { key: "idcNo", label: "IDC No.", get: (s) => s.idcNo },
@@ -2196,6 +2210,14 @@ const SAMPLE_EXPORT_FIELDS = [
   { key: "height", label: "Height (mm)", get: (s) => s.height },
   { key: "armHeight", label: "Arm Height (mm)", get: (s) => s.armHeight },
   { key: "seatHeight", label: "Seat Height (mm)", get: (s) => s.seatHeight },
+  { key: "cartonLength", label: "Carton Length (mm)", get: (s) => s.cartonLength },
+  { key: "cartonWidth", label: "Carton Width (mm)", get: (s) => s.cartonWidth },
+  { key: "cartonHeight", label: "Carton Height (mm)", get: (s) => s.cartonHeight },
+  { key: "pcsPerCtn", label: "Pcs/Ctn", get: (s) => s.pcsPerCtn },
+  { key: "cartonQty", label: "Carton Qty", get: (s) => s.cartonQty },
+  { key: "netWeight", label: "Net Weight", get: (s) => s.netWeight },
+  { key: "grossWeight", label: "Gross Weight", get: (s) => s.grossWeight },
+  { key: "cbm", label: "CBM", get: (s) => s.cbm },
   { key: "mainMaterial", label: "Main Material", get: (s, ctx) => lookupName(ctx.mainMaterials, s.mainMaterialId) },
   { key: "finishColor", label: "Finish / Color", get: (s, ctx) => lookupName(ctx.finishes, s.finishesColorId) },
   { key: "woodSurface", label: "Wood Surface Treatment", get: (s, ctx) => lookupName(ctx.woodSurface, s.woodSurfaceTreatmentId) },
@@ -2421,7 +2443,7 @@ async function downloadExcelWithEmbeddedImages(filename, headers, rows, embedded
   const sheetXml = xlsxSheetXml(headers, rows, imageColumnIndices);
   files.push({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Default Extension="gif" ContentType="image/gif"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>${imageCols.size ? `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : ""}<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>` });
   files.push({ name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` });
-  files.push({ name: "xl/workbook.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="Samples" sheetId="1" r:id="rId1"/></sheets></workbook>` });
+  files.push({ name: "xl/workbook.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets></workbook>` });
   files.push({ name: "xl/_rels/workbook.xml.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/></Relationships>` });
   files.push({ name: "xl/theme/theme1.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Tân Hòa"><a:themeElements><a:clrScheme name="Default"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="31513F"/></a:dk2><a:lt2><a:srgbClr val="F7F7F4"/></a:lt2><a:accent1><a:srgbClr val="A65F2E"/></a:accent1><a:accent2><a:srgbClr val="6D7E74"/></a:accent2><a:accent3><a:srgbClr val="D7C7A6"/></a:accent3><a:accent4><a:srgbClr val="B8C7B8"/></a:accent4><a:accent5><a:srgbClr val="D9B7A7"/></a:accent5><a:accent6><a:srgbClr val="9FB7A8"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont/><a:minorFont/></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst/><a:lnStyleLst/><a:effectStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements></a:theme>` });
   files.push({ name: "xl/worksheets/sheet1.xml", data: sheetXml });
@@ -2469,9 +2491,10 @@ function normalizeImportHeader(value) {
 
 const SAMPLE_IMPORT_HEADER_MAP = {
   "sample id": "id", "erp code": "erpNo", "sample name": "name", "customer": "customer", "product type": "productType",
-  "qty": "qty", "manufacturing order no.": "manufacturingOrderNo", "manufacturing order no": "manufacturingOrderNo", "idp no.": "idpNo", "idp no": "idpNo", "idc no.": "idcNo", "idc no": "idcNo",
+  "qty": "qty", "design from": "designFrom", "product status": "productStatus", "manufacturing order no.": "manufacturingOrderNo", "manufacturing order no": "manufacturingOrderNo", "idp no.": "idpNo", "idp no": "idpNo", "idc no.": "idcNo", "idc no": "idcNo",
   "width (mm)": "width", "width": "width", "depth (mm)": "depth", "depth": "depth", "height (mm)": "height", "height": "height",
   "arm height (mm)": "armHeight", "arm height": "armHeight", "seat height (mm)": "seatHeight", "seat height": "seatHeight",
+  "carton length (mm)": "cartonLength", "carton length": "cartonLength", "carton width (mm)": "cartonWidth", "carton width": "cartonWidth", "carton height (mm)": "cartonHeight", "carton height": "cartonHeight", "pcs/ctn": "pcsPerCtn", "pcs ctn": "pcsPerCtn", "pcs per ctn": "pcsPerCtn", "carton qty": "cartonQty", "net weight": "netWeight", "gross weight": "grossWeight", "cbm": "cbm",
   "main material": "mainMaterial", "finish / color": "finishColor", "finish/color": "finishColor", "wood surface treatment": "woodSurface",
   "fabric type": "fabricType", "fabric color": "fabricColor", "rope type": "ropeType", "rope diameter (mm)": "ropeDiameter", "rope diameter": "ropeDiameter", "rope color": "ropeColor",
   "metal name": "metalName", "metal color": "metalColor", "cemboard color": "cemboardColor", "hardware": "hardware", "construction": "construction", "revision": "currentRevision",
@@ -2777,8 +2800,11 @@ async function buildImportedSamples(file, currentSamples, customers, productType
         customerId: customerId || base.customerId || "",
         productTypeId: productTypeId || base.productTypeId || "",
         qty: toImportNumber(get("qty")) || base.qty || "",
+        designFrom: String(get("designFrom") || base.designFrom || "TanHoa").trim(),
+        productStatus: String(get("productStatus") || base.productStatus || "").trim(),
         erpNo: String(get("erpNo") ?? "").trim(), manufacturingOrderNo: String(get("manufacturingOrderNo") ?? "").trim(), idpNo: String(get("idpNo") ?? "").trim(), idcNo: String(get("idcNo") ?? "").trim(),
         width: toImportNumber(get("width")), depth: toImportNumber(get("depth")), height: toImportNumber(get("height")), armHeight: toImportNumber(get("armHeight")), seatHeight: toImportNumber(get("seatHeight")),
+        cartonLength: toImportNumber(get("cartonLength")), cartonWidth: toImportNumber(get("cartonWidth")), cartonHeight: toImportNumber(get("cartonHeight")), pcsPerCtn: toImportNumber(get("pcsPerCtn")), cartonQty: toImportNumber(get("cartonQty")), netWeight: toImportNumber(get("netWeight")), grossWeight: toImportNumber(get("grossWeight")), cbm: toImportNumber(get("cbm")),
         mainMaterialId: mainMaterialId || base.mainMaterialId || "", finishesColorId: finishesColorId || base.finishesColorId || "", woodSurfaceTreatmentId: woodSurfaceTreatmentId || base.woodSurfaceTreatmentId || "",
         fabricTypeId: fabricTypeId || base.fabricTypeId || "", fabricColorId: fabricColorId || base.fabricColorId || "", ropeTypeId: ropeTypeId || base.ropeTypeId || "", ropeDiameter: toImportNumber(get("ropeDiameter")), ropeColorId: ropeColorId || base.ropeColorId || "",
         metalName: String(get("metalName") ?? "").trim(), metalColor: String(get("metalColor") ?? "").trim(), cemboardColorId: cemboardColorId || base.cemboardColorId || "", hardware: String(get("hardware") ?? "").trim(), construction: String(get("construction") ?? "").trim(), currentRevision: String(get("currentRevision") ?? "").trim(),
@@ -2854,13 +2880,13 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.46)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(980px, 100%)", maxHeight: "88vh", background: COLORS.panel, borderRadius: 18, border: `1px solid ${COLORS.line}`, boxShadow: "0 28px 90px rgba(0,0,0,.25)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}` }}>
-          <div><div style={{ fontSize: 19, fontWeight: 750 }}>Import Samples from Excel</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Import new samples or update existing samples. Embedded Excel photos can be uploaded to Supabase Storage automatically.</div></div>
+          <div><div style={{ fontSize: 19, fontWeight: 750 }}>Import Products from Excel</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Import new products or update existing products. Embedded Excel photos can be uploaded to Supabase Storage automatically.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
         <div style={{ padding: 18, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ padding: 14, borderRadius: 12, background: "#F5F1E9", border: `1px solid ${COLORS.line}` }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>How to import</div>
-            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one sample per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the sample photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here.</div>
+            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one product per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the sample photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here.</div>
           </div>
           <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 110, border: `2px dashed ${COLORS.line}`, borderRadius: 14, cursor: "pointer", background: file ? COLORS.bg : "#fff" }}>
             <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} style={{ display: "none" }} />
@@ -2873,11 +2899,11 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
           {parsed?.unknown?.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.amberSoft, fontSize: 12 }}><b>Ignored columns:</b> {parsed.unknown.join(", ")}</div>}
           {errors.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.redSoft, border: `1px solid #f0caca` }}><div style={{ fontWeight: 700, marginBottom: 6, color: COLORS.red }}><AlertCircle size={14} style={{ verticalAlign: "-2px" }} /> {errors.length} row(s) have errors and will be skipped.</div><div style={{ maxHeight: 150, overflow: "auto", fontSize: 11.5 }}>{errors.slice(0, 30).map((e) => <div key={`${e.row}-${e.id}`} style={{ padding: "4px 0" }}>Row {e.row} · {e.id}: {e.message}</div>)}</div></div>}
           {message && <div style={{ padding: 12, borderRadius: 10, background: COLORS.greenSoft, color: COLORS.green, fontSize: 12.5 }}><CheckCircle2 size={14} style={{ verticalAlign: "-2px" }} /> {message}</div>}
-          {parsed?.results?.length > 0 && <div style={{ overflow: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}><thead><tr>{["Row", "Sample ID", "Sample Name", "ERP Code", "Customer", "Stage"].map((h) => <th key={h} style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${COLORS.line}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead><tbody>{parsed.results.slice(0, 20).map((s) => <tr key={s.id}><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>✓</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.id}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.name}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.erpNo}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{customers.find((c) => c.id === s.customerId)?.name || ""}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.stage}</td></tr>)}</tbody></table></div>}
+          {parsed?.results?.length > 0 && <div style={{ overflow: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}><thead><tr>{["Row", "Product ID", "Product Name", "ERP Code", "Customer", "Stage"].map((h) => <th key={h} style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${COLORS.line}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead><tbody>{parsed.results.slice(0, 20).map((s) => <tr key={s.id}><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>✓</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.id}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.name}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.erpNo}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{customers.find((c) => c.id === s.customerId)?.name || ""}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.stage}</td></tr>)}</tbody></table></div>}
         </div>
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={doImport} disabled={importing || !parsed?.results?.length}><Upload size={14} /> {importing ? "Importing…" : `Import ${parsed?.results?.length || 0} samples`}</Button>
+          <Button onClick={doImport} disabled={importing || !parsed?.results?.length}><Upload size={14} /> {importing ? "Importing…" : `Import ${parsed?.results?.length || 0} products`}</Button>
         </div>
       </div>
     </div>
@@ -2912,7 +2938,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
   const handleExport = async () => {
     const fields = selectedKeys.map((key) => fieldMap.get(key)).filter(Boolean);
     if (!fields.length) { alert("Select at least one field to export."); return; }
-    if (!visibleSamples.length) { alert("No samples match the current filters."); return; }
+    if (!visibleSamples.length) { alert("No products match the current filters."); return; }
     setExporting(true);
     try {
       const headers = fields.map((f) => f.label);
@@ -2948,7 +2974,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
     <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,22,.46)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ width: "min(1180px, 96vw)", maxHeight: "92vh", background: COLORS.panel, borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-          <div><h2 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 21 }}>Export Sample Data</h2><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 12.5 }}>Choose columns and apply column filters. Export creates an Excel file with images embedded directly in the workbook.</div></div>
+          <div><h2 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 21 }}>Export Product Data</h2><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 12.5 }}>Choose columns and apply column filters. Export creates an Excel file with images embedded directly in the workbook.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
 
@@ -2965,7 +2991,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
               <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F7F2EA", border: `1px solid ${COLORS.orange || "#B79F80"}` }}>
                 {(() => { const field = fieldMap.get("qrCode"); const checked = selectedKeys.includes("qrCode"); return <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={checked} onChange={() => toggleField("qrCode")} />
-                  <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this sample's public passport.</div></div>
+                  <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this product's public passport.</div></div>
                 </div>; })()}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3051,7 +3077,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
   };
 
   const rows = [
-    ["Sample name", "sampleName"], ["Product type", "productType"], ["Qty", "qty"],
+    ["Product name", "sampleName"], ["Product type", "productType"], ["Qty", "qty"],
     ["Width", "width"], ["Depth", "depth"], ["Height", "height"], ["Arm height", "armHeight"], ["Seat height", "seatHeight"],
     ["Main material", "mainMaterial"], ["Finish / color", "finishColor"], ["Wood treatment", "woodSurfaceTreatment"],
     ["Fabric type", "fabricType"], ["Fabric color", "fabricColor"], ["Rope type", "ropeType"], ["Rope diameter", "ropeDiameter"], ["Rope color", "ropeColor"],
@@ -3069,7 +3095,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1600, padding: 18 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1120px, 100%)", maxHeight: "92vh", background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 30px 100px rgba(0,0,0,.28)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div><div style={{ fontSize: 20, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={19} color={COLORS.wood} /> Upload Sample from Image</div><div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 3 }}>Upload a sample specification image. AI will fill the Sample fields for you to review before saving.</div></div>
+          <div><div style={{ fontSize: 20, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={19} color={COLORS.wood} /> Upload Product from Image</div><div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 3 }}>Upload a product specification image. AI will fill the Product fields for you to review before saving.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
         <div style={{ padding: 18, overflowY: "auto" }}>
@@ -3247,12 +3273,17 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
     setEditing({ ...s, stage: normalizeSampleWorkflowStage(s.stage), requiredComponents, noteHistory: s.noteHistory || (s.notes ? [{ id: "legacy-note", text: s.notes, createdAt: new Date().toISOString() }] : []) });
     setShowForm(true); setViewing(null);
   };
-  const remove = (id) => { if (!confirm("Delete this sample?")) return; saveSamples(samples.filter((s) => s.id !== id)); setViewing(null); };
+  const remove = (id) => { if (!confirm("Delete this product?")) return; saveSamples(samples.filter((s) => s.id !== id)); setViewing(null); };
 
   const submit = (e) => {
     e.preventDefault();
     try {
-      const cleaned = { ...editing, name: (editing.name || "").trim() || "(unnamed sample)" };
+      const qty = Number(editing.qty);
+      const pcsPerCtn = Number(editing.pcsPerCtn);
+      const cartonQty = Number.isFinite(qty) && qty > 0 && Number.isFinite(pcsPerCtn) && pcsPerCtn > 0 ? Math.ceil(qty / pcsPerCtn) : "";
+      const l = Number(editing.cartonLength), w = Number(editing.cartonWidth), h = Number(editing.cartonHeight);
+      const cbm = cartonQty !== "" && [l, w, h].every((v) => Number.isFinite(v) && v > 0) ? (l * w * h / 1e9) * cartonQty : "";
+      const cleaned = { ...editing, name: (editing.name || "").trim() || "(unnamed sample)", designFrom: editing.designFrom || "TanHoa", cartonQty, cbm };
       if (cleaned.id) {
         saveSamples(samples.map((s) => (s.id === cleaned.id ? cleaned : s)));
         if (viewing && viewing.id === cleaned.id) setViewing(cleaned);
@@ -3264,11 +3295,18 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       setEditing(null);
     } catch (err) {
       console.error("Sample save failed:", err);
-      alert("Couldn't save this sample: " + (err && err.message ? err.message : String(err)));
+      alert("Couldn't save this product: " + (err && err.message ? err.message : String(err)));
     }
   };
 
-  const set = (field) => (e) => setEditing({ ...editing, [field]: e.target.value });
+  const set = (field) => (e) => {
+    const next = { ...editing, [field]: e.target.value };
+    const qty = Number(next.qty), pcsPerCtn = Number(next.pcsPerCtn);
+    const cartonQty = Number.isFinite(qty) && qty > 0 && Number.isFinite(pcsPerCtn) && pcsPerCtn > 0 ? Math.ceil(qty / pcsPerCtn) : "";
+    const l = Number(next.cartonLength), w = Number(next.cartonWidth), h = Number(next.cartonHeight);
+    const cbm = cartonQty !== "" && [l, w, h].every((v) => Number.isFinite(v) && v > 0) ? (l * w * h / 1e9) * cartonQty : "";
+    setEditing({ ...next, cartonQty, cbm });
+  };
 
   /* Adds a brand-new item to a Materials master list (e.g. a fabric color
      that doesn't exist yet) and returns its new id, so a ComboSelect can
@@ -3328,9 +3366,9 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
           <div style={{ width: 46, height: 46, borderRadius: 15, background: "#F7F0E7", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
-          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Samples</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track and manage all sample requests from development to approval.</div></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Products</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track and manage all products from development to approval.</div></div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload sample</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New product</Button></div>
       </div>
 
       {(() => {
@@ -3348,7 +3386,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         ];
         return <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(150px, 1fr))", gap: 12 }}>
           {cards.map(([label,value,sub,Icon,color]) => <div key={label} style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 15, padding: 15, boxShadow: "0 5px 18px rgba(17,17,17,.035)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 11, background: `${color}18`, color, display: "grid", placeItems: "center" }}><Icon size={17} /></div><span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>Samples</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 11, background: `${color}18`, color, display: "grid", placeItems: "center" }}><Icon size={17} /></div><span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>Products</span></div>
             <div style={{ marginTop: 11, fontSize: 27, fontWeight: 850, letterSpacing: "-.7px" }}>{value}</div><div style={{ marginTop: 2, fontSize: 12.5, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 5, fontSize: 10.5, color: COLORS.inkSoft }}>{sub}</div>
           </div>)}
         </div>;
@@ -3358,7 +3396,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
           <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.inkSoft }} />
           <Input
-            placeholder="Search by name, sample #, ERP/IDP/IDC no., or customer…"
+            placeholder="Search by name, product #, ERP/IDP/IDC no., or customer…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: 32 }}
@@ -3391,16 +3429,16 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       </div>
 
       {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : "New sample"}>
+        <Panel title={editing.id ? `Edit ${editing.id}` : "New product"}>
           <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: COLORS.bg, border: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 9 }}>
             <Sparkles size={15} color={COLORS.wood} />
-            <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}><b style={{ color: COLORS.ink }}>Tip:</b> Upload a product/specification image from the Samples toolbar to let AI pre-fill these fields. You review everything before saving.</div>
+            <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}><b style={{ color: COLORS.ink }}>Tip:</b> Upload a product/specification image from the Products toolbar to let AI pre-fill these fields. You review everything before saving.</div>
           </div>
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
             <SectionHeading>Basic info</SectionHeading>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-              <Field label="Sample name">
+              <Field label="Product name">
                 <Input value={editing.name} onChange={set("name")} placeholder="Required — e.g. Dubai Chair" />
               </Field>
               <Field label="Customer">
@@ -3418,6 +3456,19 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
               </Field>
               <Field label="Qty">
                 <Input type="number" value={editing.qty} onChange={set("qty")} />
+              </Field>
+              <Field label="Design from">
+                <Select value={editing.designFrom} onChange={set("designFrom")}>
+                  <option value="TanHoa">TanHoa</option>
+                  <option value="Customer">Customer</option>
+                </Select>
+              </Field>
+              <Field label="Product Status">
+                <Select value={editing.productStatus} onChange={set("productStatus")}>
+                  <option value="">—</option>
+                  <option value="Accept">Accept</option>
+                  <option value="Cancel">Cancel</option>
+                </Select>
               </Field>
               <Field label="ERP No.">
                 <Input value={editing.erpNo} onChange={set("erpNo")} placeholder="Company ERP code" />
@@ -3440,6 +3491,18 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
               <Field label="Height"><Input type="number" value={editing.height} onChange={set("height")} /></Field>
               <Field label="Arm height"><Input type="number" value={editing.armHeight} onChange={set("armHeight")} /></Field>
               <Field label="Seat height"><Input type="number" value={editing.seatHeight} onChange={set("seatHeight")} /></Field>
+            </div>
+
+            <SectionHeading>Packaging Area</SectionHeading>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+              <Field label="Carton Length (mm)"><Input type="number" min="0" value={editing.cartonLength} onChange={set("cartonLength")} /></Field>
+              <Field label="Carton Width (mm)"><Input type="number" min="0" value={editing.cartonWidth} onChange={set("cartonWidth")} /></Field>
+              <Field label="Carton Height (mm)"><Input type="number" min="0" value={editing.cartonHeight} onChange={set("cartonHeight")} /></Field>
+              <Field label="Pcs/Ctn"><Input type="number" min="1" value={editing.pcsPerCtn} onChange={set("pcsPerCtn")} /></Field>
+              <Field label="Carton Qty"><Input type="number" value={editing.cartonQty} readOnly style={{ background: COLORS.bg }} /></Field>
+              <Field label="Net Weight"><Input type="number" min="0" step="any" value={editing.netWeight} onChange={set("netWeight")} /></Field>
+              <Field label="Gross Weight"><Input type="number" min="0" step="any" value={editing.grossWeight} onChange={set("grossWeight")} /></Field>
+              <Field label="CBM"><Input value={editing.cbm === "" ? "" : Number(editing.cbm).toFixed(6)} readOnly style={{ background: COLORS.bg, fontWeight: 700 }} /></Field>
             </div>
 
             <SectionHeading>Materials & finishes</SectionHeading>
@@ -3525,20 +3588,20 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
 
             <SectionHeading>Reference & notes</SectionHeading>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
-              <Field label="Sample photo">
+              <Field label="Product photo">
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {editing.image ? (
                     <div style={{ position: "relative", width: "100%", maxWidth: 420 }}>
                       <img
                         src={editing.image}
-                        alt={editing.name || "Sample preview"}
+                        alt={editing.name || "Product preview"}
                         style={{ width: "100%", maxHeight: 240, objectFit: "contain", borderRadius: 10, border: `1px solid ${COLORS.line}`, background: COLORS.bg }}
                         onError={(e) => { e.currentTarget.style.display = "none"; }}
                       />
                     </div>
                   ) : (
                     <div style={{ padding: 16, border: `1px dashed ${COLORS.line}`, borderRadius: 10, color: COLORS.inkSoft, fontSize: 13 }}>
-                      No sample photo selected.
+                      No product photo selected.
                     </div>
                   )}
 
@@ -3568,7 +3631,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
               </Field>
               <Field label="Required components">
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, background: COLORS.bg, borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 12, color: COLORS.inkSoft }}>Tick only the components this sample actually requires. Quantity is tracked here; target date, status and proof photo are managed in Material progress.</div>
+                  <div style={{ fontSize: 12, color: COLORS.inkSoft }}>Tick only the components this product actually requires. Quantity is tracked here; target date, status and proof photo are managed in Material progress.</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                     {COMPONENT_OPTIONS.map((name) => {
                       const selected = (editing.requiredComponents || []).find((c) => c.name === name);
@@ -3641,7 +3704,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>
-          {(viewMode === "kanban" ? kanbanSamples : filtered).length} sample{(viewMode === "kanban" ? kanbanSamples : filtered).length === 1 ? "" : "s"}
+          {(viewMode === "kanban" ? kanbanSamples : filtered).length} product{(viewMode === "kanban" ? kanbanSamples : filtered).length === 1 ? "" : "s"}
         </div>
       </div>
 
@@ -3672,7 +3735,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           ))}
           {filtered.length === 0 && (
             <div style={{ gridColumn: "1 / -1", padding: "40px 0", textAlign: "center", color: COLORS.inkSoft, fontSize: 14 }}>
-              No samples match your search/filters.
+              No products match your search/filters.
             </div>
           )}
         </div>
@@ -3853,7 +3916,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
           if (readiness.status === "No Material Plan") return `• ${sample.name || sample.id}: no material plan`;
           return `• ${sample.name || sample.id}: ${readiness.done}/${readiness.total} ready — missing ${readiness.missing.map((m) => m.materialName || "Material").join(", ")}`;
         }).join("\n");
-        const extra = blocked.length > 6 ? `\n+ ${blocked.length - 6} more sample(s)` : "";
+        const extra = blocked.length > 6 ? `\n+ ${blocked.length - 6} more product(s)` : "";
         const ok = window.confirm(`⚠ Materials are not fully ready for Assembly.\n\n${lines}${extra}\n\nYou can move it to Assembly anyway, but the sample will remain flagged as missing materials.\n\nMove anyway?`);
         if (!ok) { setDraggingIds([]); return; }
       }
@@ -3986,7 +4049,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
                   <div style={{ flex: 1, minHeight: 180, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", color: theme.head, opacity: .58, fontSize: 11.5, padding: 20 }}>
                     <div>
                       <div style={{ width: 38, height: 38, margin: "0 auto 10px", borderRadius: 12, border: `1px dashed ${theme.accent}`, display: "flex", alignItems: "center", justifyContent: "center", opacity: .8 }}><Boxes size={18} /></div>
-                      <div style={{ fontWeight: 700 }}>No samples yet</div>
+                      <div style={{ fontWeight: 700 }}>No products yet</div>
                       <div style={{ marginTop: 3 }}>Samples entering this stage will appear here.</div>
                     </div>
                   </div>
@@ -4169,7 +4232,7 @@ function PublicSampleLoading() {
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.inkSoft, padding: 24 }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontWeight: 800, color: COLORS.wood, marginBottom: 6 }}>TÂN HÒA ERP</div>
-        Loading sample information…
+        Loading product information…
       </div>
     </div>
   );
@@ -4211,7 +4274,7 @@ function SampleQuickViewPublic({ data }) {
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div>
-          <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Digital Sample Passport</div>
+          <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Digital Product Passport</div>
         </div>
 
         <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 20, overflow: "hidden", boxShadow: "0 10px 35px rgba(17,17,17,.07)" }}>
@@ -4259,12 +4322,12 @@ function SampleQuickViewPublic({ data }) {
             </div>
 
             <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 18 }}>
-              <div style={{ flex: 1, minWidth: 0 }}><PassportSectionTitle>Permanent QR</PassportSectionTitle><div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.5, marginTop: 5 }}>This QR stays the same while the sample information is updated in the ERP.</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 7, overflowWrap: "anywhere" }}>{url}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><PassportSectionTitle>Permanent QR</PassportSectionTitle><div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.5, marginTop: 5 }}>This QR stays the same while the product information is updated in the ERP.</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 7, overflowWrap: "anywhere" }}>{url}</div></div>
               {qrDataUrl && <img src={qrDataUrl} alt={`QR for ${sample.id}`} style={{ width: 104, height: 104, flexShrink: 0, imageRendering: "pixelated" }}/>} 
             </div>
           </div>
         </div>
-        <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#8A8F96" }}>Tân Hòa Outdoor Furniture · Digital Sample Passport · Read-only</div>
+        <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#8A8F96" }}>Tân Hòa Outdoor Furniture · Digital Product Passport · Read-only</div>
       </div>
 
       {previewImage?.url && (
@@ -4339,13 +4402,13 @@ function SampleQRModal({ sample, customerName, onClose }) {
     if (!dataUrl) return;
     const w = window.open("", "_blank", "width=520,height=700");
     if (!w) return;
-    w.document.write(`<html><head><title>${sample.id} QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:30px"><div style="font-size:18px;font-weight:700">Tân Hòa — ${sample.name || sample.id}</div><div style="color:#666;margin:8px 0 18px">${sample.erpNo || sample.id}</div><img src="${dataUrl}" style="width:300px;height:300px"/><div style="margin-top:14px;font-weight:700">Scan for latest sample information</div></body></html>`);
+    w.document.write(`<html><head><title>${sample.id} QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:30px"><div style="font-size:18px;font-weight:700">Tân Hòa — ${sample.name || sample.id}</div><div style="color:#666;margin:8px 0 18px">${sample.erpNo || sample.id}</div><img src="${dataUrl}" style="width:300px;height:300px"/><div style="margin-top:14px;font-weight:700">Scan for latest product information</div></body></html>`);
     w.document.close(); w.focus(); setTimeout(() => w.print(), 150);
   };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(17,17,17,.48)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 100%)", background: "#fff", borderRadius: 20, border: `1px solid ${COLORS.line}`, boxShadow: "0 24px 70px rgba(17,17,17,.22)", padding: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>Sample QR Code</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Permanent QR for the latest sample information.</div></div><button type="button" onClick={onClose} style={{ border: "none", background: "#F4F5F6", borderRadius: 10, width: 34, height: 34, cursor: "pointer" }}><X size={16}/></button></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>Product QR Code</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Permanent QR for the latest product information.</div></div><button type="button" onClick={onClose} style={{ border: "none", background: "#F4F5F6", borderRadius: 10, width: 34, height: 34, cursor: "pointer" }}><X size={16}/></button></div>
         <div style={{ margin: "20px auto 16px", width: 320, maxWidth: "100%", padding: 10, borderRadius: 16, background: "#fff", border: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "center" }}>{dataUrl ? <img ref={canvasRef} src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: 300, height: 300, imageRendering: "pixelated" }} /> : <div style={{ width: 300, height: 300, display: "grid", placeItems: "center", color: COLORS.inkSoft }}>Generating QR…</div>}</div>
         <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800 }}>{sample.name || "Unnamed sample"}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>{sample.id} · {sample.erpNo || "No ERP code"} · {customerName || "—"}</div></div>
         <div style={{ marginTop: 12, padding: 10, background: COLORS.bg, borderRadius: 10, fontSize: 11.5, color: COLORS.inkSoft, overflowWrap: "anywhere" }}>{url}</div>
@@ -4363,7 +4426,7 @@ function SampleQRInline({ sample, compact = false }) {
   const download = () => { if (!dataUrl) return; const a = document.createElement("a"); a.href = dataUrl; a.download = `${sample.id}-QR.png`; a.click(); };
   return <div style={{ padding: compact ? 12 : 16, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: "#fff", display: "flex", alignItems: "center", gap: 14 }}>
     <div style={{ width: compact ? 126 : 230, height: compact ? 126 : 230, flexShrink: 0, display: "grid", placeItems: "center", background: "#fff", borderRadius: 10 }}>{dataUrl ? <img src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: compact ? 120 : 220, height: compact ? 120 : 220, imageRendering: "pixelated" }} /> : <span style={{ fontSize: 11, color: COLORS.inkSoft }}>Generating…</span>}</div>
-    <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: .7, textTransform: "uppercase" }}>Sample QR</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.id}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>Scan to view the latest sample information.</div><div style={{ display: "flex", gap: 7, marginTop: 12 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={() => window.print()}>Print</Button></div></div>
+    <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: .7, textTransform: "uppercase" }}>Product QR</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.id}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>Scan to view the latest product information.</div><div style={{ display: "flex", gap: 7, marginTop: 12 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={() => window.print()}>Print</Button></div></div>
   </div>;
 }
 
@@ -4386,7 +4449,7 @@ function SampleQuickView({ sample, customerName, productTypeName, materialLists 
             <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Target date</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.targetDate || "—"}</div></div><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Next action</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.nextAction || "—"}</div></div></div>
             <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: readiness.status === "Ready" ? "#EAF7EE" : readiness.status === "Blocked" ? "#FFF0EC" : "#FFF4E5", border: `1px solid ${readiness.status === "Ready" ? "#BFE5CB" : readiness.status === "Blocked" ? "#F2C0B1" : "#F4D09D"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800 }}><span>Material readiness</span><span>{readiness.done}/{readiness.total}</span></div><div style={{ height: 7, background: "rgba(255,255,255,.75)", borderRadius: 99, marginTop: 8, overflow: "hidden" }}><div style={{ width: `${readiness.percent}%`, height: "100%", background: readiness.status === "Ready" ? COLORS.green : COLORS.wood, borderRadius: 99 }} /></div>{missing.length > 0 && <div style={{ marginTop: 9, fontSize: 12.5 }}>Missing: {missing.map((m) => m.materialName || "Material").join(", ")}</div>}</div>
             <div style={{ marginTop: 18 }}><div style={{ fontSize: 12, fontWeight: 800, color: COLORS.wood, textTransform: "uppercase", letterSpacing: .7 }}>Key specifications</div><div style={{ marginTop: 6 }}><DetailRow label="Main material" value={lookupName(materialLists.mainMaterials || [], sample.mainMaterialId)}/><DetailRow label="Finish / color" value={lookupName(materialLists.finishes || [], sample.finishesColorId)}/><DetailRow label="Rope" value={lookupName(materialLists.ropeTypes || [], sample.ropeTypeId)}/><DetailRow label="Construction" value={sample.construction || ""}/><DetailRow label="Dimensions" value={[sample.width,sample.depth,sample.height].some(v=>v!==""&&v!=null) ? `${sample.width||"—"} × ${sample.depth||"—"} × ${sample.height||"—"} mm` : ""}/></div></div>
-            <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 16 }}><div style={{ flex: 1 }}><div style={{ fontWeight: 800 }}>Scan QR anytime</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>This QR always opens the latest ERP information for this sample.</div></div>{qrDataUrl && <img src={qrDataUrl} alt="Sample QR" style={{ width: 110, height: 110 }} />}</div>
+            <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 16 }}><div style={{ flex: 1 }}><div style={{ fontWeight: 800 }}>Scan QR anytime</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>This QR always opens the latest ERP information for this product.</div></div>{qrDataUrl && <img src={qrDataUrl} alt="Sample QR" style={{ width: 110, height: 110 }} />}</div>
           </div>
         </div>
       </div>
@@ -4449,7 +4512,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
       onSaveSample({ ...s, requiredComponents: next });
       return;
     }
-    if (!window.confirm(`Delete material "${component.name || "Material"}" from this sample?`)) return;
+    if (!window.confirm(`Delete material "${component.name || "Material"}" from this product?`)) return;
     const next = components.filter((c) => c.id !== component.id);
     onSaveSample({ ...s, requiredComponents: next });
     saveMaterialPreps(allMaterialPreps.filter((p) => p.id !== component.id));
@@ -4486,7 +4549,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
             {s.image ? <img src={s.image} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <div style={{ color: COLORS.inkSoft, fontSize: 12.5, display: "flex", gap: 6 }}><ImageIcon size={16} /> No photo yet</div>}
           </div>
           <SectionHeading>Basic info</SectionHeading>
-          <DetailRow label="Customer" value={customerName(s.customerId)} /><DetailRow label="Product type" value={productTypeName(s.productTypeId)} /><DetailRow label="Qty" value={s.qty} /><DetailRow label="ERP No." value={s.erpNo} /><DetailRow label="Manufacturing Order No." value={s.manufacturingOrderNo} /><DetailRow label="IDP No." value={s.idpNo} /><DetailRow label="IDC No." value={s.idcNo} /><DetailRow label="Dimensions (W×D×H)" value={dims} /><DetailRow label="Arm height" value={s.armHeight} /><DetailRow label="Seat height" value={s.seatHeight} />
+          <DetailRow label="Design from" value={s.designFrom} /><DetailRow label="Product status" value={s.productStatus} /><DetailRow label="Customer" value={customerName(s.customerId)} /><DetailRow label="Product type" value={productTypeName(s.productTypeId)} /><DetailRow label="Qty" value={s.qty} /><DetailRow label="ERP No." value={s.erpNo} /><DetailRow label="Manufacturing Order No." value={s.manufacturingOrderNo} /><DetailRow label="IDP No." value={s.idpNo} /><DetailRow label="IDC No." value={s.idcNo} /><DetailRow label="Dimensions (W×D×H)" value={dims} /><DetailRow label="Arm height" value={s.armHeight} /><DetailRow label="Seat height" value={s.seatHeight} />
         </div>
         <div>
           <SectionHeading>Materials & finishes</SectionHeading>
@@ -4500,9 +4563,16 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
       </div>
 
       <div style={{ marginTop: 20 }}>
+        <SectionHeading>Packaging Area</SectionHeading>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          <DetailRow label="Carton Length (mm)" value={s.cartonLength} /><DetailRow label="Carton Width (mm)" value={s.cartonWidth} /><DetailRow label="Carton Height (mm)" value={s.cartonHeight} /><DetailRow label="Pcs/Ctn" value={s.pcsPerCtn} /><DetailRow label="Carton Qty" value={s.cartonQty} /><DetailRow label="Net Weight" value={s.netWeight} /><DetailRow label="Gross Weight" value={s.grossWeight} /><DetailRow label="CBM" value={s.cbm} />
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
         <SectionHeading>Material progress</SectionHeading>
-        <div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 6, marginBottom: 10 }}>Only components selected for this sample are shown. Photo proof is available only after the status is Done.</div>
-        {components.length === 0 ? <div style={{ color: COLORS.inkSoft, fontSize: 13.5, background: COLORS.bg, padding: 12, borderRadius: 8 }}>No required components selected. Edit the Sample and tick the components needed.</div> : (
+        <div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 6, marginBottom: 10 }}>Only components selected for this product are shown. Photo proof is available only after the status is Done.</div>
+        {components.length === 0 ? <div style={{ color: COLORS.inkSoft, fontSize: 13.5, background: COLORS.bg, padding: 12, borderRadius: 8 }}>No required components selected. Edit the Product and tick the components needed.</div> : (
           <div style={{ overflowX: "auto" }}><div style={{ minWidth: 760, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1.25fr 80px 150px 150px minmax(170px,1.2fr) 44px", gap: 8, fontSize: 11.5, color: COLORS.inkSoft, padding: "0 10px" }}><div>Component</div><div>Qty</div><div>Target date</div><div>Status</div><div>Photo proof</div><div></div></div>
             {components.map((c) => (
@@ -4523,7 +4593,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
 
       <div style={{ marginTop: 20 }}><SectionHeading>Revision history</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>{(s.revisions || []).map((r) => <div key={r.id} style={{ display: "flex", gap: 12, borderBottom: `1px solid ${COLORS.line}`, paddingBottom: 10 }}>{r.photo && <img src={r.photo} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }} />}<div><div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>{r.date}</div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.changeReason}</div>{r.note && <div style={{ fontSize: 13, color: COLORS.inkSoft }}>{r.note}</div>}</div></div>)}{(s.revisions || []).length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No revisions logged yet.</div>}<div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr", gap: 8 }}><Input type="date" value={newRevision.date} onChange={(e) => setNewRevision({ ...newRevision, date: e.target.value })} /><Input placeholder="What changed?" value={newRevision.changeReason} onChange={(e) => setNewRevision({ ...newRevision, changeReason: e.target.value })} /><Input placeholder="Photo URL (optional)" value={newRevision.photo} onChange={(e) => setNewRevision({ ...newRevision, photo: e.target.value })} /></div><div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8 }}><Input placeholder="Note (optional)" value={newRevision.note} onChange={(e) => setNewRevision({ ...newRevision, note: e.target.value })} /><Button small onClick={addRevision}><Plus size={13} /> Add revision</Button></div></div></div>
 
-      <div style={{ marginTop: 20 }}><SectionHeading>Related tasks</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{relatedTasks.length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No tasks linked to this sample yet.</div>}{relatedTasks.map((t) => <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.bg, padding: "8px 10px", borderRadius: 8, fontSize: 13 }}><div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.type || "Daily"} · {t.referencePerson || "—"}{t.deadline ? ` · ${t.deadline}` : ""}</div></div><button onClick={() => cycleTaskStatus(t)} style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}><Badge tone={taskStatusTone(t.status)}>{t.status}</Badge></button></div>)}<div style={{ display: "grid", gridTemplateColumns: "1fr 140px auto", gap: 8, marginTop: 4 }}><Input placeholder="Quick add a task for this sample…" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} /><Input type="date" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} /><Button small onClick={addRelatedTask}><Plus size={13} /> Add</Button></div></div></div>
+      <div style={{ marginTop: 20 }}><SectionHeading>Related tasks</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{relatedTasks.length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No tasks linked to this product yet.</div>}{relatedTasks.map((t) => <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.bg, padding: "8px 10px", borderRadius: 8, fontSize: 13 }}><div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.type || "Daily"} · {t.referencePerson || "—"}{t.deadline ? ` · ${t.deadline}` : ""}</div></div><button onClick={() => cycleTaskStatus(t)} style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}><Badge tone={taskStatusTone(t.status)}>{t.status}</Badge></button></div>)}<div style={{ display: "grid", gridTemplateColumns: "1fr 140px auto", gap: 8, marginTop: 4 }}><Input placeholder="Quick add a task for this product…" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} /><Input type="date" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} /><Button small onClick={addRelatedTask}><Plus size={13} /> Add</Button></div></div></div>
     </Panel>
   );
 }
@@ -4555,6 +4625,8 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [newTask, setNewTask] = useState({ ...BLANK_TASK, deadline: "" });
 
   const iso = (d) => {
     const x = new Date(d);
@@ -4595,7 +4667,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       id: `sample-${s.id}`,
       date: s.targetDate,
       type: "sample",
-      label: s.name || "Unnamed sample",
+      label: s.name || "Unnamed product",
       subtitle: s.erpNo || s.id,
       sampleName: s.name || "",
       sampleId: s.id,
@@ -4651,6 +4723,29 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
 
   const moveWeek = (days) => { const d = new Date(weekStart); d.setDate(d.getDate() + days); setWeekStart(d); };
   const goToday = () => setWeekStart(startOfWeek(new Date()));
+  const openCreateTask = (date = today) => {
+    setNewTask({ ...BLANK_TASK, deadline: date || today });
+    setShowCreateTask(true);
+  };
+  const closeCreateTask = () => {
+    setShowCreateTask(false);
+    setNewTask({ ...BLANK_TASK, deadline: "" });
+  };
+  const submitCreateTask = (ev) => {
+    ev.preventDefault();
+    const cleaned = {
+      ...BLANK_TASK,
+      ...newTask,
+      name: String(newTask.name || "").trim() || "(unnamed task)",
+      type: newTask.type || "Daily",
+      status: newTask.status || "To Do",
+      priority: newTask.priority || "",
+      deadline: newTask.deadline || today,
+    };
+    const id = nextId(tasks, "TSK", 4);
+    saveTasks([...tasks, { ...cleaned, id }]);
+    closeCreateTask();
+  };
   const formatWeek = () => {
     const a = weekDays[0].date, b = weekDays[6].date;
     const am = a.toLocaleDateString("en-US", { month: "short" }), bm = b.toLocaleDateString("en-US", { month: "short" });
@@ -4810,10 +4905,11 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
           <h1 style={{ fontFamily: FONT_HEAD, fontSize: 28, margin: "3px 0 0", letterSpacing: "-.03em" }}>Master Production Calendar</h1>
           <div style={{ color: COLORS.inkSoft, fontSize: 12.5, marginTop: 4 }}>Drag any sample, material or task to reschedule it. The linked record is updated automatically.</div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: 3 }}>
             {[['week','Week'], ['list','Agenda']].map(([k,l]) => <button key={k} onClick={() => setView(k)} style={{ border: "none", background: view === k ? COLORS.wood : "transparent", color: view === k ? "#fff" : COLORS.inkSoft, borderRadius: 8, padding: "7px 11px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{l}</button>)}
           </div>
+          <Button onClick={() => openCreateTask()}><Plus size={15} /> Create New Task</Button>
         </div>
       </div>
 
@@ -4855,6 +4951,31 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
         <div style={{ display: "grid", gridTemplateColumns: "1.45fr 1fr", gap: 14 }}>
           <Panel title="Agenda — this week"><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{visibleEvents.filter((e) => e.date >= weekDays[0].iso && e.date <= weekEnd).map((e) => <div key={e.id} style={{ display: "grid", gridTemplateColumns: "82px 1fr", gap: 10, alignItems: "start" }}><div style={{ fontSize: 10.5, color: COLORS.inkSoft, fontWeight: 700 }}>{formatDate(e.date)}</div><EventCard e={e} /></div>)}{!visibleEvents.some((e) => e.date >= weekDays[0].iso && e.date <= weekEnd) && <div style={{ color: COLORS.inkSoft, fontSize: 13 }}>Nothing scheduled this week.</div>}</div></Panel>
           <Panel title="Follow-up queue"><div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{overdue.slice(0, 8).map((e) => <EventCard key={e.id} e={e} />)}{!overdue.length && <div style={{ color: COLORS.green, fontSize: 13 }}>Nothing overdue — all caught up.</div>}</div></Panel>
+        </div>
+      )}
+
+      {showCreateTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(17,17,17,.28)", zIndex: 55, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={closeCreateTask}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(620px, 100%)", maxHeight: "90vh", overflow: "auto", background: COLORS.panel, borderRadius: 16, border: `1px solid ${COLORS.line}`, boxShadow: "0 20px 60px rgba(0,0,0,.18)" }}>
+            <div style={{ padding: "15px 17px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div><div style={{ fontSize: 10, color: COLORS.wood, fontWeight: 850, textTransform: "uppercase", letterSpacing: ".08em" }}>Calendar</div><div style={{ fontSize: 18, fontWeight: 850, marginTop: 3 }}>Create New Task</div><div style={{ marginTop: 4, fontSize: 11, color: COLORS.inkSoft }}>Create here and the same task will appear in the Tasks interface.</div></div>
+              <button type="button" onClick={closeCreateTask} style={{ border: "none", background: COLORS.bg, borderRadius: 8, width: 30, height: 30, cursor: "pointer" }}><X size={15} /></button>
+            </div>
+            <form onSubmit={submitCreateTask} style={{ padding: 17, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Task name" width="100%"><Input autoFocus required value={newTask.name} onChange={(e) => setNewTask({ ...newTask, name: e.target.value })} placeholder="e.g. Follow-up with SKLUM on QC" /></Field>
+                <Field label="Task type"><Select value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>{TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
+                <Field label="Reference person(s)"><Input value={newTask.referencePerson} onChange={(e) => setNewTask({ ...newTask, referencePerson: e.target.value })} placeholder="e.g. Chị Hiền, Tôi" /></Field>
+                <Field label="Deadline"><Input type="date" value={newTask.deadline} onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })} /></Field>
+                <Field label="Status"><Select value={newTask.status} onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}>{TASK_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}</Select></Field>
+                <Field label="Priority"><Select value={newTask.priority} onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}><option value="">—</option>{PRIORITY_OPTIONS.map((pr) => <option key={pr} value={pr}>{pr}</option>)}</Select></Field>
+                <Field label="Linked sample"><Select value={newTask.sampleId} onChange={(e) => setNewTask({ ...newTask, sampleId: e.target.value })}><option value="">— None —</option>{samples.map((sample) => <option key={sample.id} value={sample.id}>{sample.erpNo || sample.id} — {sample.name || "(unnamed sample)"}</option>)}</Select></Field>
+              </div>
+              <Field label="Description"><TextArea rows={3} value={newTask.description} onChange={(e) => setNewTask({ ...newTask, description: e.target.value })} placeholder="Add task description, details, or notes..." /></Field>
+              <Field label="Note"><TextArea rows={2} value={newTask.note} onChange={(e) => setNewTask({ ...newTask, note: e.target.value })} /></Field>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}><Button type="button" variant="ghost" onClick={closeCreateTask}>Cancel</Button><Button type="submit"><Plus size={15} /> Create task</Button></div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -5264,7 +5385,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ position: "sticky", top: 0, background: COLORS.panel, zIndex: 1 }}>
-                    {['ERP Code', 'Sample Name', 'Customer', 'Stage', ''].map((h, i) => <th key={i} style={{ textAlign: "left", padding: "11px 8px", borderBottom: `1px solid ${COLORS.line}`, color: COLORS.inkSoft, fontWeight: 700 }}>{h}</th>)}
+                    {['ERP Code', 'Product Name', 'Customer', 'Stage', ''].map((h, i) => <th key={i} style={{ textAlign: "left", padding: "11px 8px", borderBottom: `1px solid ${COLORS.line}`, color: COLORS.inkSoft, fontWeight: 700 }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
