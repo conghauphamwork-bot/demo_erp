@@ -112,7 +112,7 @@ const SEED_SAMPLES_RAW = [{"Sample_ID": "SA00002", "Customer_ID": "CS0000", "Sam
 const SEED_SAMPLES = SEED_SAMPLES_RAW.map((s) => ({
   id: s.Sample_ID,
   customerId: s.Customer_ID || "CS0000",
-  name: s.Sample_Name || "(unnamed sample)",
+  name: s.Sample_Name || "(unnamed product)",
   productTypeId: s.Product_Type || "",
   qty: s.Sample_Qty === "" ? "" : s.Sample_Qty,
   erpNo: s.ERP_No || "",
@@ -169,6 +169,7 @@ const SEED_TASKS = [{"id": "TSK0001", "name": "Follow-Up Kế hoạch có hàng 
 
 const TASK_STATUSES = ["To Do", "In Progress", "Waiting", "Done"];
 const TASK_TYPES = ["Sample", "Sample Test", "Daily"];
+const taskTypeLabel = (type) => type === "Sample" ? "Product" : type === "Sample Test" ? "Product Test" : (type || "Daily");
 const COMPONENT_OPTIONS = ["Wood Frame", "Cushion", "Metal Frame", "Rope", "Fabric", "Hardware", "Cemboard", "Packaging", "Glass", "Other"];
 
 const ORDER_STAGES = [
@@ -211,7 +212,7 @@ function normalizeSampleWorkflowStage(stage) {
   return LEGACY_SAMPLE_STAGE_MAP[value] || (SAMPLE_STAGES.includes(value) ? value : "Request Received");
 }
 
-// Single-hue progression: the board becomes warmer/darker as a sample moves
+// Single-hue progression: the board becomes warmer/darker as a product moves
 // closer to completion. Keeping one orange family makes the workflow feel like
 // one continuous production pipeline instead of seven unrelated categories.
 const SAMPLE_STAGE_THEME = {
@@ -231,8 +232,8 @@ const PRIORITY_OPTIONS = ["Low", "Medium", "High Priority", "Urgent"];
 const PREP_STATUS_OPTIONS = ["Pending", "Waiting", "In Progress", "Done"];
 const PREP_MATERIAL_SUGGESTIONS = ["Cushion", "Wood Frame", "Metal Frame", "Rope", "Fabric", "Hardware", "Cemboard", "Packaging"];
 
-/* Maps each spec field on a sample to the checklist component it implies,
-   so "Generate from specs" can turn what a sample IS MADE OF into a
+/* Maps each spec field on a product to the checklist component it implies,
+   so "Generate from specs" can turn what a product IS MADE OF into a
    trackable list of what needs to ARRIVE. */
 const COMPONENT_FIELDS = [
   { field: "mainMaterialId", label: "Frame material", lookupKey: "mainMaterials" },
@@ -277,9 +278,9 @@ const MATERIAL_LIST_TABS = [
   { key: "cemboardColors", label: "Cemboard Colors", prefix: "CBC", seed: SEED_CEMBOARD_COLORS },
 ];
 
-/* Default shape for a sample — used to backfill older saved records
+/* Default shape for a product — used to backfill older saved records
    that predate newer fields, without losing any data the user already entered. */
-const BLANK_SAMPLE = {
+const BLANK_PRODUCT = {
   id: "", customerId: "", name: "", productTypeId: "", qty: "", designFrom: "TanHoa", productStatus: "Accept",
   erpNo: "", manufacturingOrderNo: "", idpNo: "", idcNo: "",
   width: "", depth: "", height: "", armHeight: "", seatHeight: "",
@@ -297,7 +298,42 @@ const BLANK_SAMPLE = {
 };
 
 function normalizeSample(s) {
-  return { ...BLANK_SAMPLE, ...s, requiredComponents: s.requiredComponents || [], noteHistory: s.noteHistory || [], revisions: s.revisions || [] };
+  return { ...BLANK_PRODUCT, ...s, requiredComponents: s.requiredComponents || [], noteHistory: s.noteHistory || [], revisions: s.revisions || [] };
+}
+
+// Final persistence guard for Product records. React DOM events/elements can
+// accidentally enter state when a handler is wired incorrectly. Those objects
+// contain circular React internals and must never reach JSON.stringify/PostgREST.
+function jsonSafeClone(value, seen = new WeakSet()) {
+  if (value === null || value === undefined) return value;
+  const type = typeof value;
+  if (type === "string" || type === "number" || type === "boolean") return value;
+  if (type === "bigint") return Number(value);
+  if (type === "function" || type === "symbol") return undefined;
+  if (typeof Node !== "undefined" && value instanceof Node) return undefined;
+  if (typeof Event !== "undefined" && value instanceof Event) return undefined;
+  if (typeof File !== "undefined" && value instanceof File) return undefined;
+  if (typeof Blob !== "undefined" && value instanceof Blob) return undefined;
+  if (typeof value !== "object") return undefined;
+  if (seen.has(value)) return undefined;
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => jsonSafeClone(item, seen)).filter((item) => item !== undefined);
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key.startsWith("__react") || key === "stateNode" || key === "_reactInternals" || key === "nativeEvent") continue;
+    const safe = jsonSafeClone(item, seen);
+    if (safe !== undefined) out[key] = safe;
+  }
+  return out;
+}
+
+function sanitizeProductForPersistence(product) {
+  const safe = jsonSafeClone(product);
+  return safe && typeof safe === "object" && !Array.isArray(safe) ? safe : { ...BLANK_PRODUCT };
+}
+
+function productSignature(product) {
+  return JSON.stringify(sanitizeProductForPersistence(product));
 }
 
 const BLANK_TASK = {
@@ -765,7 +801,7 @@ function LineItemsEditor({ items, onChange }) {
       </div>
       {items.map((it, idx) => (
         <div key={it.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px 110px 32px", gap: 8, alignItems: "center" }}>
-          <Input value={it.name} placeholder="Product / sample name" onChange={(e) => update(idx, "name", e.target.value)} />
+          <Input value={it.name} placeholder="Product name" onChange={(e) => update(idx, "name", e.target.value)} />
           <Input type="number" value={it.qty} onChange={(e) => update(idx, "qty", e.target.value)} />
           <Input type="number" value={it.unitPrice} onChange={(e) => update(idx, "unitPrice", e.target.value)} />
           <div style={{ fontSize: 13.5 }}>{money((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))}</div>
@@ -955,7 +991,7 @@ function levelCan(level, module, action = "view") {
           else setPublicSample(data);
         } catch (err) {
           console.error("Public sample load failed", err);
-          setPublicSampleError("Could not load this sample. Please check the QR link or contact Tân Hòa.");
+          setPublicSampleError("Could not load this product. Please check the QR link or contact Tân Hòa.");
         } finally {
           setLoaded(true);
         }
@@ -983,27 +1019,33 @@ function levelCan(level, module, action = "view") {
   const setAndSave = {
     customers: (next) => { setCustomers(next); saveCollection("customers", customers, next, adapters.customers).catch((e) => alert("Customer save failed: " + e.message)); },
     samples: (next) => {
-      setSamples(next);
+      // Always keep UI state responsive, but persist only a JSON-safe snapshot.
+      // This prevents React HTMLButtonElement/Event objects from ever reaching
+      // JSON.stringify and causing the circular-structure crash.
+      const safeNext = (next || []).map(sanitizeProductForPersistence);
+      setSamples(safeNext);
       (async () => {
         try {
           const oldById = new Map(samples.map((x) => [x.id, x]));
-          const newById = new Map(next.map((x) => [x.id, x]));
-          // Remove child records before deleting a sample so FK constraints cannot block the delete.
-          for (const oldSample of samples) {
-            if (!newById.has(oldSample.id)) {
-              await deleteWhere("sample_components", "sample_id", oldSample.id);
-              await deleteWhere("sample_notes", "sample_id", oldSample.id);
-              await deleteWhere("sample_revisions", "sample_id", oldSample.id);
-              await deleteRow("samples", oldSample.id);
+          const newById = new Map(safeNext.map((x) => [x.id, x]));
+          for (const oldProduct of samples) {
+            if (!newById.has(oldProduct.id)) {
+              await deleteWhere("sample_components", "sample_id", oldProduct.id);
+              await deleteWhere("sample_notes", "sample_id", oldProduct.id);
+              await deleteWhere("sample_revisions", "sample_id", oldProduct.id);
+              await deleteRow("samples", oldProduct.id);
             }
           }
-          const touched = next.filter((sample) => {
-            const old = oldById.get(sample.id);
-            return !old || JSON.stringify(old) !== JSON.stringify(sample);
+          const touched = safeNext.filter((product) => {
+            const old = oldById.get(product.id);
+            return !old || productSignature(old) !== productSignature(product);
           });
           if (touched.length) await upsertRows("samples", touched.map(adapters.samples));
-          for (const sample of touched) await saveSampleChildren(sample);
-        } catch (e) { alert("Sample save failed: " + e.message); }
+          for (const product of touched) await saveSampleChildren(product);
+        } catch (e) {
+          console.error("Product save failed:", e);
+          alert("Product save failed: " + (e?.message || String(e)));
+        }
       })();
     },
     quotes: (next) => { setQuotes(next); Promise.all(next.map((q) => saveJsonRecord("quote", q))).then(() => Promise.all(quotes.filter((q) => !next.some((n) => n.id === q.id)).map((q) => deleteJsonRecord("quote", q.id)))).catch((e) => alert("Quote save failed: " + e.message)); },
@@ -1047,10 +1089,10 @@ function levelCan(level, module, action = "view") {
         // public.sample_components.
         (async () => {
           try {
-            const touched = changed.filter((sample, i) => JSON.stringify(sample) !== JSON.stringify(currentSamples[i]));
-            if (touched.length) await upsertRows("samples", touched.map(adapters.samples));
+            const touched = changed.filter((sample, i) => productSignature(sample) !== productSignature(currentSamples[i]));
+            if (touched.length) await upsertRows("samples", touched.map(sanitizeProductForPersistence).map(adapters.samples));
           } catch (e) {
-            alert("Sample material sync failed: " + e.message);
+            alert("Product material sync failed: " + e.message);
           }
         })();
         return changed;
@@ -1492,7 +1534,7 @@ function FloatingAIAssistant({ samples, tasks, customers, materialPreps, orders,
       },
       samples: samples.map(s => ({
         id: s.id,
-        name: s.name || "Unnamed sample",
+        name: s.name || "Unnamed product",
         erpNo: s.erpNo || "",
         customer: customerById.get(s.customerId) || "—",
         productType: productTypeName(s.productTypeId) || "—",
@@ -1659,10 +1701,10 @@ function FloatingAIAssistant({ samples, tasks, customers, materialPreps, orders,
   };
 
   const suggestions = [
-    "How many samples are in each stage?",
-    "Which samples are overdue or need attention?",
+    "How many products are in each stage?",
+    "Which products are overdue or need attention?",
     "Show me open tasks due soon.",
-    "What is the current status of sample CH0600?",
+    "What is the current status of product CH0600?",
   ];
 
   return (
@@ -1709,7 +1751,7 @@ function FloatingAIAssistant({ samples, tasks, customers, materialPreps, orders,
                   value={question}
                   onChange={e => setQuestion(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }}
-                  placeholder="Ask: Which samples are overdue?"
+                  placeholder="Ask: Which products are overdue?"
                   rows={1}
                   disabled={loading}
                 />
@@ -1769,7 +1811,7 @@ function Dashboard({ customers, quotes, orders, samples, shipments, customerName
         {stat("Open quotes", `${openQuotes.length} · ${money(pipelineValue)}`)}
         {stat("Active orders", `${activeOrders.length} · ${money(activeOrderValue)}`, COLORS.wood)}
         {stat("Products in progress", samples.filter((s) => s.stage && s.stage !== "Completed").length, COLORS.teal)}
-        {stat("On-time sample rate", onTimeRate === null ? "—" : `${onTimeRate}%`, onTimeRate === null ? COLORS.ink : onTimeRate >= 80 ? COLORS.green : COLORS.red)}
+        {stat("On-time product rate", onTimeRate === null ? "—" : `${onTimeRate}%`, onTimeRate === null ? COLORS.ink : onTimeRate >= 80 ? COLORS.green : COLORS.red)}
         {stat("Overdue materials", overduePreps.length, overduePreps.length ? COLORS.red : COLORS.green)}
         {stat("Overdue tasks", overdueTasks.length, overdueTasks.length ? COLORS.red : COLORS.green)}
         {stat("Tasks due today", todayTasks.length, todayTasks.length ? COLORS.amber : COLORS.green)}
@@ -2143,7 +2185,7 @@ function OrdersView({ orders, saveOrders, customers, customerName, samples }) {
             { key: "total", label: "Total", render: (o) => money(lineTotal(o.items)) },
             {
               key: "samples",
-              label: "Samples",
+              label: "Products",
               render: (o) => {
                 const ls = linkedSamples(o.id);
                 return ls.length ? `${ls.length} linked` : "—";
@@ -2180,12 +2222,12 @@ function OrdersView({ orders, saveOrders, customers, customerName, samples }) {
 
 /* ---------------- Samples ---------------- */
 
-/* ---------------- Sample export ---------------- */
+/* ---------------- Product export ---------------- */
 
 const SAMPLE_EXPORT_FIELDS = [
-  { key: "id", label: "Sample ID", get: (s) => s.id },
+  { key: "id", label: "Product ID", get: (s) => s.id },
   { key: "erpNo", label: "ERP Code", get: (s) => s.erpNo },
-  { key: "name", label: "Sample Name", get: (s) => s.name },
+  { key: "name", label: "Product Name", get: (s) => s.name },
   { key: "customer", label: "Customer", get: (s, ctx) => ctx.customerName(s.customerId) },
   { key: "productType", label: "Product Type", get: (s, ctx) => ctx.productTypeName(s.productTypeId) },
   { key: "qty", label: "Qty", get: (s) => s.qty },
@@ -2479,7 +2521,7 @@ function normalizeImportHeader(value) {
 }
 
 const SAMPLE_IMPORT_HEADER_MAP = {
-  "sample id": "id", "erp code": "erpNo", "sample name": "name", "customer": "customer", "product type": "productType",
+  "sample id": "id", "product id": "id", "erp code": "erpNo", "sample name": "name", "product name": "name", "customer": "customer", "product type": "productType",
   "design from": "designFrom", "product status": "productStatus",
   "qty": "qty", "manufacturing order no.": "manufacturingOrderNo", "manufacturing order no": "manufacturingOrderNo", "idp no.": "idpNo", "idp no": "idpNo", "idc no.": "idcNo", "idc no": "idcNo",
   "width (mm)": "width", "width": "width", "depth (mm)": "depth", "depth": "depth", "height (mm)": "height", "height": "height",
@@ -2762,7 +2804,9 @@ async function buildImportedSamples(file, currentSamples, customers, productType
   const mappedHeaders = headerEntries.map(([col, label]) => ({ col, label: String(label).trim(), key: NORMALIZED_SAMPLE_IMPORT_HEADER_MAP[normalizeImportHeader(label)] }));
   const unknown = mappedHeaders.filter((h) => !h.key).map((h) => h.label);
   const dataRows = parsed.rows.slice(1).filter((r) => Object.values(r.cells).some((v) => String(v ?? "").trim() !== ""));
-  const existingById = new Map(currentSamples.map((s) => [String(s.id).toLowerCase(), s]));
+  const existingById = new Map(currentSamples.map((s) => [String(s.id).trim().toLowerCase(), s]));
+  const existingByErp = new Map(currentSamples.filter((s) => String(s.erpNo || "").trim()).map((s) => [String(s.erpNo).trim().toLowerCase(), s]));
+  const importedByErp = new Map();
   const results = [];
   const errors = [];
   let createCount = 0;
@@ -2775,10 +2819,10 @@ async function buildImportedSamples(file, currentSamples, customers, productType
     const rawId = String(get("id") || "").trim();
     const rawErpNo = String(get("erpNo") || "").trim();
     const existingByIdMatch = rawId ? existingById.get(rawId.toLowerCase()) : null;
-    const existingByErpMatch = rawErpNo ? existingByErp.get(rawErpNo.toLowerCase()) : null;
+    const existingByErpMatch = rawErpNo ? (importedByErp.get(rawErpNo.toLowerCase()) || existingByErp.get(rawErpNo.toLowerCase())) : null;
     const existing = existingByErpMatch || existingByIdMatch || null;
     const id = existing?.id || rawId || nextId([...currentSamples, ...results], "SA", 5);
-    const base = existing ? { ...existing } : { ...BLANK_SAMPLE, id, requiredComponents: [], noteHistory: [], revisions: [] };
+    const base = existing ? { ...existing } : { ...BLANK_PRODUCT, id, requiredComponents: [], noteHistory: [], revisions: [] };
     const resolve = (list, key, label) => {
       const raw = get(key);
       if (!String(raw).trim()) return "";
@@ -2807,7 +2851,7 @@ async function buildImportedSamples(file, currentSamples, customers, productType
       const next = {
         ...base,
         id,
-        name: String(get("name") || base.name || "(unnamed sample)").trim(),
+        name: String(get("name") || base.name || "(unnamed product)").trim(),
         designFrom: String(get("designFrom") || base.designFrom || "TanHoa").trim(),
         productStatus: String(get("productStatus") || base.productStatus || "Accept").trim(),
         customerId: customerId || base.customerId || "",
@@ -2829,6 +2873,7 @@ async function buildImportedSamples(file, currentSamples, customers, productType
       const image = (imageCellRef && parsed.imageByCell?.[imageCellRef]) || parsed.imageByRow[row.rowNumber];
       if (image) { next.__importImage = image; imageCount++; }
       results.push(next);
+      if (rawErpNo) importedByErp.set(rawErpNo.toLowerCase(), next);
       if (existing) updateCount++; else createCount++;
     } catch (error) {
       errors.push({ row: row.rowNumber, id: rawId || "(new)", message: error?.message || String(error) });
@@ -2891,13 +2936,13 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.46)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(980px, 100%)", maxHeight: "88vh", background: COLORS.panel, borderRadius: 18, border: `1px solid ${COLORS.line}`, boxShadow: "0 28px 90px rgba(0,0,0,.25)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}` }}>
-          <div><div style={{ fontSize: 19, fontWeight: 750 }}>Import Samples from Excel</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Import new samples or update existing samples. Embedded Excel photos can be uploaded to Supabase Storage automatically.</div></div>
+          <div><div style={{ fontSize: 19, fontWeight: 750 }}>Import Products from Excel</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Import new products or update existing products. Embedded Excel photos can be uploaded to Supabase Storage automatically.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
         <div style={{ padding: 18, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ padding: 14, borderRadius: 12, background: "#F5F1E9", border: `1px solid ${COLORS.line}` }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>How to import</div>
-            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one sample per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the sample photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here.</div>
+            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one product per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the product photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here. <b>Matching rule:</b> if ERP Code already exists, the existing product is updated; if it does not exist, a new product is created.</div>
           </div>
           <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 110, border: `2px dashed ${COLORS.line}`, borderRadius: 14, cursor: "pointer", background: file ? COLORS.bg : "#fff" }}>
             <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} style={{ display: "none" }} />
@@ -2910,11 +2955,11 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
           {parsed?.unknown?.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.amberSoft, fontSize: 12 }}><b>Ignored columns:</b> {parsed.unknown.join(", ")}</div>}
           {errors.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.redSoft, border: `1px solid #f0caca` }}><div style={{ fontWeight: 700, marginBottom: 6, color: COLORS.red }}><AlertCircle size={14} style={{ verticalAlign: "-2px" }} /> {errors.length} row(s) have errors and will be skipped.</div><div style={{ maxHeight: 150, overflow: "auto", fontSize: 11.5 }}>{errors.slice(0, 30).map((e) => <div key={`${e.row}-${e.id}`} style={{ padding: "4px 0" }}>Row {e.row} · {e.id}: {e.message}</div>)}</div></div>}
           {message && <div style={{ padding: 12, borderRadius: 10, background: COLORS.greenSoft, color: COLORS.green, fontSize: 12.5 }}><CheckCircle2 size={14} style={{ verticalAlign: "-2px" }} /> {message}</div>}
-          {parsed?.results?.length > 0 && <div style={{ overflow: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}><thead><tr>{["Row", "Sample ID", "Sample Name", "ERP Code", "Customer", "Stage"].map((h) => <th key={h} style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${COLORS.line}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead><tbody>{parsed.results.slice(0, 20).map((s) => <tr key={s.id}><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>✓</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.id}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.name}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.erpNo}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{customers.find((c) => c.id === s.customerId)?.name || ""}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.stage}</td></tr>)}</tbody></table></div>}
+          {parsed?.results?.length > 0 && <div style={{ overflow: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}><thead><tr>{["Row", "Product ID", "Product Name", "ERP Code", "Customer", "Stage"].map((h) => <th key={h} style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${COLORS.line}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead><tbody>{parsed.results.slice(0, 20).map((s) => <tr key={s.id}><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>✓</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.id}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.name}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.erpNo}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{customers.find((c) => c.id === s.customerId)?.name || ""}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.stage}</td></tr>)}</tbody></table></div>}
         </div>
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={doImport} disabled={importing || !parsed?.results?.length}><Upload size={14} /> {importing ? "Importing…" : `Import ${parsed?.results?.length || 0} samples`}</Button>
+          <Button onClick={doImport} disabled={importing || !parsed?.results?.length}><Upload size={14} /> {importing ? "Importing…" : `Import ${parsed?.results?.length || 0} products`}</Button>
         </div>
       </div>
     </div>
@@ -2949,7 +2994,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
   const handleExport = async () => {
     const fields = selectedKeys.map((key) => fieldMap.get(key)).filter(Boolean);
     if (!fields.length) { alert("Select at least one field to export."); return; }
-    if (!visibleSamples.length) { alert("No samples match the current filters."); return; }
+    if (!visibleSamples.length) { alert("No products match the current filters."); return; }
     setExporting(true);
     try {
       const headers = fields.map((f) => f.label);
@@ -2969,7 +3014,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
           }
         }));
       }
-      const result = await downloadExcelWithEmbeddedImages(`Sample_Export_${stamp.slice(8,10)}-${stamp.slice(5,7)}-${stamp.slice(2,4)}.xlsx`, headers, rows, embeddedImageColumns);
+      const result = await downloadExcelWithEmbeddedImages(`Product_Export_${stamp.slice(8,10)}-${stamp.slice(5,7)}-${stamp.slice(2,4)}.xlsx`, headers, rows, embeddedImageColumns);
       const message = result.failedImages
         ? `Excel exported. ${result.embeddedCount} image/QR item(s) embedded; ${result.failedImages} item(s) could not be embedded.`
         : `Excel exported successfully with ${result.embeddedCount} embedded image/QR item(s).`;
@@ -2985,24 +3030,24 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
     <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,22,.46)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ width: "min(1180px, 96vw)", maxHeight: "92vh", background: COLORS.panel, borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-          <div><h2 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 21 }}>Export Sample Data</h2><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 12.5 }}>Choose columns and apply column filters. Export creates an Excel file with images embedded directly in the workbook.</div></div>
+          <div><h2 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 21 }}>Export Product Data</h2><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 12.5 }}>Choose columns and apply column filters. Export creates an Excel file with images embedded directly in the workbook.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
 
         <div style={{ padding: "14px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <Field label="Export scope" width="auto"><Select value={scope} onChange={(e) => setScope(e.target.value)} style={{ width: 220 }}><option value="all">All samples</option>{selectedSampleIds.length > 0 && <option value="selected">Selected samples ({selectedSampleIds.length})</option>}{initialSampleId && <option value="current">Current sample only</option>}</Select></Field>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}><Badge tone="wood">{visibleSamples.length} samples</Badge><Badge tone="green">{selectedKeys.length} fields</Badge><Button small variant="subtle" onClick={resetFilters}>Reset filters</Button></div>
+          <Field label="Export scope" width="auto"><Select value={scope} onChange={(e) => setScope(e.target.value)} style={{ width: 220 }}><option value="all">All products</option>{selectedSampleIds.length > 0 && <option value="selected">Selected products ({selectedSampleIds.length})</option>}{initialSampleId && <option value="current">Current product only</option>}</Select></Field>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}><Badge tone="wood">{visibleSamples.length} products</Badge><Badge tone="green">{selectedKeys.length} fields</Badge><Button small variant="subtle" onClick={resetFilters}>Reset filters</Button></div>
         </div>
 
         <div style={{ padding: "14px 22px", overflowY: "auto" }}>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(360px, 1.05fr) minmax(420px, 1.35fr)", gap: 18 }}>
             <Panel title="Columns & filters" action={<div style={{ display: "flex", gap: 6 }}><Button small variant="subtle" onClick={selectAll}>Select all</Button><Button small variant="ghost" onClick={clearAll}>Clear</Button></div>}>
               <Input value={fieldSearch} onChange={(e) => setFieldSearch(e.target.value)} placeholder="Search fields…" style={{ marginBottom: 10 }} />
-              <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 9, background: "#F5F1E9", color: COLORS.inkSoft, fontSize: 11.5 }}>Tip: select <b>Image (embedded)</b> for the sample photo or <b>QR Code</b> to place a scannable QR image directly into the Excel file.</div>
+              <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 9, background: "#F5F1E9", color: COLORS.inkSoft, fontSize: 11.5 }}>Tip: select <b>Image (embedded)</b> for the product photo or <b>QR Code</b> to place a scannable QR image directly into the Excel file.</div>
               <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F7F2EA", border: `1px solid ${COLORS.orange || "#B79F80"}` }}>
                 {(() => { const field = fieldMap.get("qrCode"); const checked = selectedKeys.includes("qrCode"); return <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={checked} onChange={() => toggleField("qrCode")} />
-                  <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this sample's public passport.</div></div>
+                  <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this product's public passport.</div></div>
                 </div>; })()}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3027,7 +3072,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
 
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleExport} disabled={exporting || !visibleSamples.length || !selectedKeys.length}><Download size={14} /> {exporting ? "Exporting…" : `Export ${visibleSamples.length} samples`}</Button>
+          <Button onClick={handleExport} disabled={exporting || !visibleSamples.length || !selectedKeys.length}><Download size={14} /> {exporting ? "Exporting…" : `Export ${visibleSamples.length} products`}</Button>
         </div>
       </div>
     </div>
@@ -3088,7 +3133,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
   };
 
   const rows = [
-    ["Sample name", "sampleName"], ["Product type", "productType"], ["Qty", "qty"],
+    ["Product name", "sampleName"], ["Product type", "productType"], ["Qty", "qty"],
     ["Width", "width"], ["Depth", "depth"], ["Height", "height"], ["Arm height", "armHeight"], ["Seat height", "seatHeight"],
     ["Main material", "mainMaterial"], ["Finish / color", "finishColor"], ["Wood treatment", "woodSurfaceTreatment"],
     ["Fabric type", "fabricType"], ["Fabric color", "fabricColor"], ["Rope type", "ropeType"], ["Rope diameter", "ropeDiameter"], ["Rope color", "ropeColor"],
@@ -3106,7 +3151,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1600, padding: 18 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1120px, 100%)", maxHeight: "92vh", background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 30px 100px rgba(0,0,0,.28)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div><div style={{ fontSize: 20, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={19} color={COLORS.wood} /> Upload Sample from Image</div><div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 3 }}>Upload a sample specification image. AI will fill the Sample fields for you to review before saving.</div></div>
+          <div><div style={{ fontSize: 20, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={19} color={COLORS.wood} /> Upload Product from Image</div><div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 3 }}>Upload a product specification image. AI will fill the Product fields for you to review before saving.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
         <div style={{ padding: 18, overflowY: "auto" }}>
@@ -3115,9 +3160,9 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
               <div>
                 <label style={{ display: "flex", minHeight: 280, border: `2px dashed ${COLORS.line}`, borderRadius: 14, alignItems: "center", justifyContent: "center", cursor: "pointer", background: COLORS.bg, overflow: "hidden" }}>
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { readFile(e.target.files?.[0]); e.target.value = ""; }} />
-                  {preview ? <img src={preview} alt="Description preview" style={{ width: "100%", height: 280, objectFit: "contain" }} /> : <div style={{ textAlign: "center", color: COLORS.inkSoft }}><ImageIcon size={34} /><div style={{ fontWeight: 700, marginTop: 10 }}>Upload sample / specification image</div><div style={{ fontSize: 12, marginTop: 4 }}>PNG / JPG / WebP · max 12 MB</div></div>}
+                  {preview ? <img src={preview} alt="Description preview" style={{ width: "100%", height: 280, objectFit: "contain" }} /> : <div style={{ textAlign: "center", color: COLORS.inkSoft }}><ImageIcon size={34} /><div style={{ fontWeight: 700, marginTop: 10 }}>Upload product / specification image</div><div style={{ fontSize: 12, marginTop: 4 }}>PNG / JPG / WebP · max 12 MB</div></div>}
                 </label>
-                <div style={{ marginTop: 10, fontSize: 11.5, color: COLORS.inkSoft }}>Best results: upload a clear screenshot/photo of the customer's Product Description table or specification sheet. AI will extract the values into the Sample form.</div>
+                <div style={{ marginTop: 10, fontSize: 11.5, color: COLORS.inkSoft }}>Best results: upload a clear screenshot/photo of the customer's Product Description table or specification sheet. AI will extract the values into the Product form.</div>
               </div>
               <div>
                 <Field label="Optional description text — useful if the image is low quality">
@@ -3129,7 +3174,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
             </div>
           ) : (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>Sample information found</div><div style={{ fontSize: 12, color: COLORS.inkSoft }}>Review or edit the extracted values, then apply them to the Sample form.</div></div><Button small variant="subtle" onClick={() => setResult(null)}>← Analyze again</Button></div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>Product information found</div><div style={{ fontSize: 12, color: COLORS.inkSoft }}>Review or edit the extracted values, then apply them to the Sample form.</div></div><Button small variant="subtle" onClick={() => setResult(null)}>← Analyze again</Button></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {rows.map(([label, key]) => {
                   const value = result[key] ?? "";
@@ -3145,7 +3190,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
         </div>
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          {!result ? <Button onClick={analyze} disabled={loading || (!file && !descriptionText.trim())}>{loading ? "Reading image…" : <><Sparkles size={14} /> Read image</>}</Button> : <Button onClick={() => onApply({ ...result, __imagePreview: preview }, createMissing)}><CheckCircle2 size={14} /> Continue to Sample form</Button>}
+          {!result ? <Button onClick={analyze} disabled={loading || (!file && !descriptionText.trim())}>{loading ? "Reading image…" : <><Sparkles size={14} /> Read image</>}</Button> : <Button onClick={() => onApply({ ...result, __imagePreview: preview }, createMissing)}><CheckCircle2 size={14} /> Continue to Product form</Button>}
         </div>
       </div>
     </div>
@@ -3218,7 +3263,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   };
 
   const startNew = (initialStage = "Request Received") => {
-    setEditing({ ...BLANK_SAMPLE, customerId: customers[0]?.id || "", stage: initialStage, requiredComponents: [] , noteHistory: [] });
+    setEditing({ ...BLANK_PRODUCT, customerId: customers[0]?.id || "", stage: initialStage, requiredComponents: [] , noteHistory: [] });
     setShowForm(true);
     setViewing(null);
   };
@@ -3284,12 +3329,12 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
     setEditing({ ...s, stage: normalizeSampleWorkflowStage(s.stage), requiredComponents, noteHistory: s.noteHistory || (s.notes ? [{ id: "legacy-note", text: s.notes, createdAt: new Date().toISOString() }] : []) });
     setShowForm(true); setViewing(null);
   };
-  const remove = (id) => { if (!confirm("Delete this sample?")) return; saveSamples(samples.filter((s) => s.id !== id)); setViewing(null); };
+  const remove = (id) => { if (!confirm("Delete this product?")) return; saveSamples(samples.filter((s) => s.id !== id)); setViewing(null); };
 
   const submit = (e) => {
     e.preventDefault();
     try {
-      const cleaned = { ...editing, name: (editing.name || "").trim() || "(unnamed sample)" };
+      const cleaned = { ...editing, name: (editing.name || "").trim() || "(unnamed product)" };
       if (cleaned.id) {
         saveSamples(samples.map((s) => (s.id === cleaned.id ? cleaned : s)));
         if (viewing && viewing.id === cleaned.id) setViewing(cleaned);
@@ -3301,7 +3346,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       setEditing(null);
     } catch (err) {
       console.error("Sample save failed:", err);
-      alert("Couldn't save this sample: " + (err && err.message ? err.message : String(err)));
+      alert("Couldn't save this product: " + (err && err.message ? err.message : String(err)));
     }
   };
 
@@ -3380,7 +3425,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           <div style={{ width: 46, height: 46, borderRadius: 15, background: "#F7F0E7", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
           <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Products</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track and manage all products from development to approval.</div></div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload sample</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New product</Button></div>
       </div>
 
       {(() => {
@@ -3390,15 +3435,15 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         const overdue = samples.filter((s) => s.targetDate && !completed && s.targetDate < todayStr()).length;
         const ready = samples.filter((s) => getMaterialReadiness(s, materialPreps).status === "Ready").length;
         const cards = [
-          ["Total Samples", total, "All samples currently loaded", Boxes, COLORS.wood],
-          ["In Progress", inProgress, "Samples beyond request stage", CalendarDays, "#6B8BB5"],
+          ["Total Products", total, "All products currently loaded", Boxes, COLORS.wood],
+          ["In Progress", inProgress, "Products beyond request stage", CalendarDays, "#6B8BB5"],
           ["Overdue", overdue, "Past target date", AlertCircle, COLORS.red],
           ["Ready for Assembly", ready, "All required materials done", CheckCircle2, COLORS.green],
           ["Completed", completed, "Completed / shipped samples", CheckCircle2, COLORS.woodDark],
         ];
         return <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(150px, 1fr))", gap: 12 }}>
           {cards.map(([label,value,sub,Icon,color]) => <div key={label} style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 15, padding: 15, boxShadow: "0 5px 18px rgba(17,17,17,.035)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 11, background: `${color}18`, color, display: "grid", placeItems: "center" }}><Icon size={17} /></div><span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>Samples</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 11, background: `${color}18`, color, display: "grid", placeItems: "center" }}><Icon size={17} /></div><span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>Products</span></div>
             <div style={{ marginTop: 11, fontSize: 27, fontWeight: 850, letterSpacing: "-.7px" }}>{value}</div><div style={{ marginTop: 2, fontSize: 12.5, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 5, fontSize: 10.5, color: COLORS.inkSoft }}>{sub}</div>
           </div>)}
         </div>;
@@ -3408,7 +3453,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
           <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: COLORS.inkSoft }} />
           <Input
-            placeholder="Search by name, sample #, ERP/IDP/IDC no., or customer…"
+            placeholder="Search by product name, product ID, ERP/IDP/IDC no., or customer…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: 32 }}
@@ -3441,7 +3486,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       </div>
 
       {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : "New sample"}>
+        <Panel title={editing.id ? `Edit ${editing.id}` : "New product"}>
           <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: COLORS.bg, border: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 9 }}>
             <Sparkles size={15} color={COLORS.wood} />
             <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}><b style={{ color: COLORS.ink }}>Tip:</b> Upload a product/specification image from the Products toolbar to let AI pre-fill these fields. You review everything before saving.</div>
@@ -3613,7 +3658,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
                     </div>
                   ) : (
                     <div style={{ padding: 16, border: `1px dashed ${COLORS.line}`, borderRadius: 10, color: COLORS.inkSoft, fontSize: 13 }}>
-                      No sample photo selected.
+                      No product photo selected.
                     </div>
                   )}
 
@@ -3643,7 +3688,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
               </Field>
               <Field label="Required components">
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, background: COLORS.bg, borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 12, color: COLORS.inkSoft }}>Tick only the components this sample actually requires. Quantity is tracked here; target date, status and proof photo are managed in Material progress.</div>
+                  <div style={{ fontSize: 12, color: COLORS.inkSoft }}>Tick only the components this product actually requires. Quantity is tracked here; target date, status and proof photo are managed in Material progress.</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                     {COMPONENT_OPTIONS.map((name) => {
                       const selected = (editing.requiredComponents || []).find((c) => c.name === name);
@@ -3716,7 +3761,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>
-          {(viewMode === "kanban" ? kanbanSamples : filtered).length} sample{(viewMode === "kanban" ? kanbanSamples : filtered).length === 1 ? "" : "s"}
+          {(viewMode === "kanban" ? kanbanSamples : filtered).length} product{(viewMode === "kanban" ? kanbanSamples : filtered).length === 1 ? "" : "s"}
         </div>
       </div>
 
@@ -3747,7 +3792,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           ))}
           {filtered.length === 0 && (
             <div style={{ gridColumn: "1 / -1", padding: "40px 0", textAlign: "center", color: COLORS.inkSoft, fontSize: 14 }}>
-              No samples match your search/filters.
+              No products match your search/filters.
             </div>
           )}
         </div>
@@ -3815,7 +3860,7 @@ function getMaterialReadiness(sample, materialPreps = []) {
   const live = (materialPreps || []).filter((p) => p.sampleId === sample.id);
   const snapshot = Array.isArray(sample.requiredComponents) ? sample.requiredComponents : [];
 
-  // Build the required-material set from BOTH the sample definition and the
+  // Build the required-material set from BOTH the product definition and the
   // live material-prep rows. This prevents a partial live plan from hiding
   // required materials that are still missing from preparation.
   const byKey = new Map();
@@ -3928,8 +3973,8 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
           if (readiness.status === "No Material Plan") return `• ${sample.name || sample.id}: no material plan`;
           return `• ${sample.name || sample.id}: ${readiness.done}/${readiness.total} ready — missing ${readiness.missing.map((m) => m.materialName || "Material").join(", ")}`;
         }).join("\n");
-        const extra = blocked.length > 6 ? `\n+ ${blocked.length - 6} more sample(s)` : "";
-        const ok = window.confirm(`⚠ Materials are not fully ready for Assembly.\n\n${lines}${extra}\n\nYou can move it to Assembly anyway, but the sample will remain flagged as missing materials.\n\nMove anyway?`);
+        const extra = blocked.length > 6 ? `\n+ ${blocked.length - 6} more product(s)` : "";
+        const ok = window.confirm(`⚠ Materials are not fully ready for Assembly.\n\n${lines}${extra}\n\nYou can move it to Assembly anyway, but the product will remain flagged as missing materials.\n\nMove anyway?`);
         if (!ok) { setDraggingIds([]); return; }
       }
     }
@@ -3985,7 +4030,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#DCC6A9", color: "#fff", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#222" }}>samples selected</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#222" }}>products selected</div>
               <div style={{ fontSize: 11, color: "#8A6A5A" }}>Drag any selected card to another column to move them together.</div>
             </div>
           </div>
@@ -4061,8 +4106,8 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
                   <div style={{ flex: 1, minHeight: 180, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", color: theme.head, opacity: .58, fontSize: 11.5, padding: 20 }}>
                     <div>
                       <div style={{ width: 38, height: 38, margin: "0 auto 10px", borderRadius: 12, border: `1px dashed ${theme.accent}`, display: "flex", alignItems: "center", justifyContent: "center", opacity: .8 }}><Boxes size={18} /></div>
-                      <div style={{ fontWeight: 700 }}>No samples yet</div>
-                      <div style={{ marginTop: 3 }}>Samples entering this stage will appear here.</div>
+                      <div style={{ fontWeight: 700 }}>No products yet</div>
+                      <div style={{ marginTop: 3 }}>Products entering this stage will appear here.</div>
                     </div>
                   </div>
                 )}
@@ -4072,7 +4117,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
                 onClick={() => onAddSample?.(stage)}
                 style={{ margin: "0 10px 10px", padding: "10px", borderRadius: 10, border: "1px solid #DDE1E5", background: "#FFFFFF", color: "#50575F", fontWeight: 750, fontSize: 11.5, textAlign: "center", cursor: "pointer", fontFamily: FONT_BODY, width: "calc(100% - 20px)" }}
               >
-                <span style={{ fontSize: 16, verticalAlign: -1, marginRight: 5 }}>＋</span> Add sample
+                <span style={{ fontSize: 16, verticalAlign: -1, marginRight: 5 }}>＋</span> Add product
               </button>
             </div>
           );
@@ -4110,10 +4155,10 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
     return (
       <div className="sample-kanban-card" style={{ position: "relative", background: "#FFFFFF", border: `1px solid #DCC6A9`, borderRadius: 14, padding: 12, cursor: "default", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0, boxShadow: "0 0 0 2px rgba(220,198,169,.16), 0 8px 22px rgba(17,17,17,.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#4D453D" }}>Quick edit sample</div>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#4D453D" }}>Quick edit product</div>
           <span style={{ fontSize: 10.5, color: "#8A7B6B", fontWeight: 700 }}>{s.id}</span>
         </div>
-        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Sample name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Product name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 82px", gap: 7 }}>
           <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>ERP No.<input value={draft.erpNo} onChange={(e) => setDraft({ ...draft, erpNo: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
           <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Qty<input type="number" min="0" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
@@ -4172,7 +4217,7 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
         <div style={{ flex: 1, minWidth: 0 }} onClick={onClick}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
             <div style={{ minWidth: 0 }}>
-              <div className="kanban-card-title" style={{ color: COLORS.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}>{s.name || "(unnamed sample)"}</div>
+              <div className="kanban-card-title" style={{ color: COLORS.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}>{s.name || "(unnamed product)"}</div>
               <div
                 className="kanban-meta kanban-erp-code"
                 style={{ marginTop: 4, overflowWrap: "anywhere", wordBreak: "break-word", whiteSpace: "normal" }}
@@ -4181,14 +4226,14 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
                 {s.erpNo ? s.erpNo : "No ERP code"}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}><button type="button" className="kanban-icon-button" title="Show sample QR" aria-label="Show sample QR" onClick={(e) => { e.stopPropagation(); onShowQR?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><QrCodeIcon size={14} /></button><button type="button" className="kanban-icon-button" title="Quick edit sample" aria-label="Quick edit sample" onClick={openQuickEdit} onMouseDown={(e) => e.stopPropagation()} draggable={false}><Pencil size={14} /></button></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}><button type="button" className="kanban-icon-button" title="Show product QR" aria-label="Show product QR" onClick={(e) => { e.stopPropagation(); onShowQR?.(); }} onMouseDown={(e) => e.stopPropagation()} draggable={false}><QrCodeIcon size={14} /></button><button type="button" className="kanban-icon-button" title="Quick edit product" aria-label="Quick edit product" onClick={openQuickEdit} onMouseDown={(e) => e.stopPropagation()} draggable={false}><Pencil size={14} /></button></div>
           </div>
           <div className="kanban-meta" style={{ marginTop: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customerName || "—"}</div>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <span className="kanban-pill" style={{ color: "#4F565E", background: "#F1F3F5", border: "1px solid #E1E4E8" }}>{s.productTypeName || s.productType || "Sample"}</span>
+        <span className="kanban-pill" style={{ color: "#4F565E", background: "#F1F3F5", border: "1px solid #E1E4E8" }}>{s.productTypeName || s.productType || "Product"}</span>
         <span className="kanban-pill" style={{ color: "#686D73", background: "#F3F4F6" }}>Qty {s.quantity ?? s.qty ?? 1}</span>
         {s.priority && <span className="kanban-pill" style={{ color: s.priority === "Urgent" ? "#806A51" : "#686D73", background: s.priority === "Urgent" ? "#FCE2D7" : "#F3F4F6" }}>{s.priority}</span>}
       </div>
@@ -4244,7 +4289,7 @@ function PublicSampleLoading() {
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.inkSoft, padding: 24 }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontWeight: 800, color: COLORS.wood, marginBottom: 6 }}>TÂN HÒA ERP</div>
-        Loading sample information…
+        Loading product information…
       </div>
     </div>
   );
@@ -4255,7 +4300,7 @@ function PublicSampleError({ message }) {
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#F6F7F9", fontFamily: FONT_BODY, padding: 24 }}>
       <div style={{ maxWidth: 460, width: "100%", background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 26, textAlign: "center", boxShadow: "0 8px 30px rgba(17,17,17,.06)" }}>
         <div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div>
-        <h1 style={{ fontSize: 21, margin: "8px 0" }}>Sample unavailable</h1>
+        <h1 style={{ fontSize: 21, margin: "8px 0" }}>Product unavailable</h1>
         <div style={{ color: COLORS.inkSoft, lineHeight: 1.55 }}>{message}</div>
       </div>
     </div>
@@ -4286,7 +4331,7 @@ function SampleQuickViewPublic({ data }) {
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div>
-          <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Digital Sample Passport</div>
+          <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Digital Product Passport</div>
         </div>
 
         <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 20, overflow: "hidden", boxShadow: "0 10px 35px rgba(17,17,17,.07)" }}>
@@ -4301,8 +4346,8 @@ function SampleQuickViewPublic({ data }) {
               <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.wood, background: COLORS.amberSoft, padding: "5px 8px", borderRadius: 7 }}>{sample.id}</span>
               {sample.currentRevision && <span style={{ fontSize: 11.5, color: COLORS.inkSoft, background: COLORS.bg, padding: "5px 8px", borderRadius: 7 }}>Rev. {sample.currentRevision}</span>}
             </div>
-            <h1 style={{ fontSize: "clamp(25px, 6vw, 34px)", lineHeight: 1.1, margin: "9px 0 5px", letterSpacing: "-.7px" }}>{sample.name || "Unnamed sample"}</h1>
-            <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>{sample.customer || "—"} · {sample.productType || "Sample"}</div>
+            <h1 style={{ fontSize: "clamp(25px, 6vw, 34px)", lineHeight: 1.1, margin: "9px 0 5px", letterSpacing: "-.7px" }}>{sample.name || "Unnamed product"}</h1>
+            <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>{sample.customer || "—"} · {sample.productType || "Product"}</div>
 
             <div style={{ marginTop: 20 }}>
               <PassportSectionTitle>Product specifications</PassportSectionTitle>
@@ -4323,7 +4368,7 @@ function SampleQuickViewPublic({ data }) {
             </div>
 
             <div style={{ marginTop: 20, padding: 16, borderRadius: 16, background: COLORS.bg, border: `1px solid ${COLORS.line}` }}>
-              <PassportSectionTitle>Sample identification</PassportSectionTitle>
+              <PassportSectionTitle>Product identification</PassportSectionTitle>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                 {sample.manufacturingOrderNo && <PassportChip label="MO" value={sample.manufacturingOrderNo}/>} 
                 {sample.idpNo && <PassportChip label="IDP" value={sample.idpNo}/>} 
@@ -4334,12 +4379,12 @@ function SampleQuickViewPublic({ data }) {
             </div>
 
             <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 18 }}>
-              <div style={{ flex: 1, minWidth: 0 }}><PassportSectionTitle>Permanent QR</PassportSectionTitle><div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.5, marginTop: 5 }}>This QR stays the same while the sample information is updated in the ERP.</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 7, overflowWrap: "anywhere" }}>{url}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><PassportSectionTitle>Permanent QR</PassportSectionTitle><div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.5, marginTop: 5 }}>This QR stays the same while the product information is updated in the ERP.</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 7, overflowWrap: "anywhere" }}>{url}</div></div>
               {qrDataUrl && <img src={qrDataUrl} alt={`QR for ${sample.id}`} style={{ width: 104, height: 104, flexShrink: 0, imageRendering: "pixelated" }}/>} 
             </div>
           </div>
         </div>
-        <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#8A8F96" }}>Tân Hòa Outdoor Furniture · Digital Sample Passport · Read-only</div>
+        <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#8A8F96" }}>Tân Hòa Outdoor Furniture · Digital Product Passport · Read-only</div>
       </div>
 
       {previewImage?.url && (
@@ -4414,7 +4459,7 @@ function SampleQRModal({ sample, customerName, onClose }) {
     if (!dataUrl) return;
     const w = window.open("", "_blank", "width=520,height=700");
     if (!w) return;
-    w.document.write(`<html><head><title>${sample.id} QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:30px"><div style="font-size:18px;font-weight:700">Tân Hòa — ${sample.name || sample.id}</div><div style="color:#666;margin:8px 0 18px">${sample.erpNo || sample.id}</div><img src="${dataUrl}" style="width:300px;height:300px"/><div style="margin-top:14px;font-weight:700">Scan for latest sample information</div></body></html>`);
+    w.document.write(`<html><head><title>${sample.id} QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:30px"><div style="font-size:18px;font-weight:700">Tân Hòa — ${sample.name || sample.id}</div><div style="color:#666;margin:8px 0 18px">${sample.erpNo || sample.id}</div><img src="${dataUrl}" style="width:300px;height:300px"/><div style="margin-top:14px;font-weight:700">Scan for latest product information</div></body></html>`);
     w.document.close(); w.focus(); setTimeout(() => w.print(), 150);
   };
   return (
@@ -4422,7 +4467,7 @@ function SampleQRModal({ sample, customerName, onClose }) {
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 100%)", background: "#fff", borderRadius: 20, border: `1px solid ${COLORS.line}`, boxShadow: "0 24px 70px rgba(17,17,17,.22)", padding: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>Product QR Code</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Permanent QR for the latest product information.</div></div><button type="button" onClick={onClose} style={{ border: "none", background: "#F4F5F6", borderRadius: 10, width: 34, height: 34, cursor: "pointer" }}><X size={16}/></button></div>
         <div style={{ margin: "20px auto 16px", width: 320, maxWidth: "100%", padding: 10, borderRadius: 16, background: "#fff", border: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "center" }}>{dataUrl ? <img ref={canvasRef} src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: 300, height: 300, imageRendering: "pixelated" }} /> : <div style={{ width: 300, height: 300, display: "grid", placeItems: "center", color: COLORS.inkSoft }}>Generating QR…</div>}</div>
-        <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800 }}>{sample.name || "Unnamed sample"}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>{sample.id} · {sample.erpNo || "No ERP code"} · {customerName || "—"}</div></div>
+        <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800 }}>{sample.name || "Unnamed product"}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>{sample.id} · {sample.erpNo || "No ERP code"} · {customerName || "—"}</div></div>
         <div style={{ marginTop: 12, padding: 10, background: COLORS.bg, borderRadius: 10, fontSize: 11.5, color: COLORS.inkSoft, overflowWrap: "anywhere" }}>{url}</div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={print} disabled={!dataUrl}>Print</Button><Button small onClick={onClose}>Close</Button></div>
       </div>
@@ -4438,7 +4483,7 @@ function SampleQRInline({ sample, compact = false }) {
   const download = () => { if (!dataUrl) return; const a = document.createElement("a"); a.href = dataUrl; a.download = `${sample.id}-QR.png`; a.click(); };
   return <div style={{ padding: compact ? 12 : 16, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: "#fff", display: "flex", alignItems: "center", gap: 14 }}>
     <div style={{ width: compact ? 126 : 230, height: compact ? 126 : 230, flexShrink: 0, display: "grid", placeItems: "center", background: "#fff", borderRadius: 10 }}>{dataUrl ? <img src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: compact ? 120 : 220, height: compact ? 120 : 220, imageRendering: "pixelated" }} /> : <span style={{ fontSize: 11, color: COLORS.inkSoft }}>Generating…</span>}</div>
-    <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: .7, textTransform: "uppercase" }}>Sample QR</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.id}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>Scan to view the latest sample information.</div><div style={{ display: "flex", gap: 7, marginTop: 12 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={() => window.print()}>Print</Button></div></div>
+    <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: .7, textTransform: "uppercase" }}>Product QR</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.id}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>Scan to view the latest product information.</div><div style={{ display: "flex", gap: 7, marginTop: 12 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={() => window.print()}>Print</Button></div></div>
   </div>;
 }
 
@@ -4452,16 +4497,16 @@ function SampleQuickView({ sample, customerName, productTypeName, materialLists 
   return (
     <div style={{ minHeight: "100vh", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.ink, padding: "18px 14px 40px" }}>
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Sample Quick View</div></div><button type="button" onClick={back} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 10, padding: "8px 11px", cursor: "pointer" }}>Back to ERP</button></div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Product Quick View</div></div><button type="button" onClick={back} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 10, padding: "8px 11px", cursor: "pointer" }}>Back to ERP</button></div>
         <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 18, overflow: "hidden", boxShadow: "0 8px 30px rgba(17,17,17,.06)" }}>
           {sample.image ? <img src={sample.image} alt={sample.name} style={{ width: "100%", maxHeight: 300, objectFit: "contain", background: "#F0F1EC" }} /> : <div style={{ height: 180, display: "grid", placeItems: "center", background: "#F0F1EC", color: COLORS.inkSoft }}><ImageIcon size={34}/></div>}
           <div style={{ padding: 20 }}>
-            <div style={{ fontSize: 12, color: COLORS.inkSoft }}>{sample.id}</div><h1 style={{ fontSize: 24, margin: "5px 0 4px", letterSpacing: "-.5px" }}>{sample.name || "Unnamed sample"}</h1><div style={{ color: COLORS.inkSoft, fontSize: 13 }}>{customerName || "—"} · {productTypeName || "Sample"}</div>
+            <div style={{ fontSize: 12, color: COLORS.inkSoft }}>{sample.id}</div><h1 style={{ fontSize: 24, margin: "5px 0 4px", letterSpacing: "-.5px" }}>{sample.name || "Unnamed product"}</h1><div style={{ color: COLORS.inkSoft, fontSize: 13 }}>{customerName || "—"} · {productTypeName || "Product"}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>ERP No.</div><div style={{ fontWeight: 800, marginTop: 4, overflowWrap: "anywhere" }}>{sample.erpNo || "—"}</div></div><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Current stage</div><div style={{ fontWeight: 800, marginTop: 4 }}>{normalizeSampleWorkflowStage(sample.stage)}</div></div></div>
             <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Target date</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.targetDate || "—"}</div></div><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Next action</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.nextAction || "—"}</div></div></div>
             <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: readiness.status === "Ready" ? "#EAF7EE" : readiness.status === "Blocked" ? "#FFF0EC" : "#FFF4E5", border: `1px solid ${readiness.status === "Ready" ? "#BFE5CB" : readiness.status === "Blocked" ? "#F2C0B1" : "#F4D09D"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800 }}><span>Material readiness</span><span>{readiness.done}/{readiness.total}</span></div><div style={{ height: 7, background: "rgba(255,255,255,.75)", borderRadius: 99, marginTop: 8, overflow: "hidden" }}><div style={{ width: `${readiness.percent}%`, height: "100%", background: readiness.status === "Ready" ? COLORS.green : COLORS.wood, borderRadius: 99 }} /></div>{missing.length > 0 && <div style={{ marginTop: 9, fontSize: 12.5 }}>Missing: {missing.map((m) => m.materialName || "Material").join(", ")}</div>}</div>
             <div style={{ marginTop: 18 }}><div style={{ fontSize: 12, fontWeight: 800, color: COLORS.wood, textTransform: "uppercase", letterSpacing: .7 }}>Key specifications</div><div style={{ marginTop: 6 }}><DetailRow label="Main material" value={lookupName(materialLists.mainMaterials || [], sample.mainMaterialId)}/><DetailRow label="Finish / color" value={lookupName(materialLists.finishes || [], sample.finishesColorId)}/><DetailRow label="Rope" value={lookupName(materialLists.ropeTypes || [], sample.ropeTypeId)}/><DetailRow label="Construction" value={sample.construction || ""}/><DetailRow label="Dimensions" value={[sample.width,sample.depth,sample.height].some(v=>v!==""&&v!=null) ? `${sample.width||"—"} × ${sample.depth||"—"} × ${sample.height||"—"} mm` : ""}/></div></div>
-            <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 16 }}><div style={{ flex: 1 }}><div style={{ fontWeight: 800 }}>Scan QR anytime</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>This QR always opens the latest ERP information for this sample.</div></div>{qrDataUrl && <img src={qrDataUrl} alt="Sample QR" style={{ width: 110, height: 110 }} />}</div>
+            <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 16 }}><div style={{ flex: 1 }}><div style={{ fontWeight: 800 }}>Scan QR anytime</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>This QR always opens the latest ERP information for this product.</div></div>{qrDataUrl && <img src={qrDataUrl} alt="Product QR" style={{ width: 110, height: 110 }} />}</div>
           </div>
         </div>
       </div>
@@ -4524,7 +4569,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
       onSaveSample({ ...s, requiredComponents: next });
       return;
     }
-    if (!window.confirm(`Delete material "${component.name || "Material"}" from this sample?`)) return;
+    if (!window.confirm(`Delete material "${component.name || "Material"}" from this product?`)) return;
     const next = components.filter((c) => c.id !== component.id);
     onSaveSample({ ...s, requiredComponents: next });
     saveMaterialPreps(allMaterialPreps.filter((p) => p.id !== component.id));
@@ -4558,7 +4603,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
         <div>
           <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 10, border: `1px solid ${COLORS.line}`, marginBottom: 14, background: COLORS.bg, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {s.image ? <img src={s.image} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <div style={{ color: COLORS.inkSoft, fontSize: 12.5, display: "flex", gap: 6 }}><ImageIcon size={16} /> No photo yet</div>}
+            {s.image ? <img src={s.image} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <div style={{ color: COLORS.inkSoft, fontSize: 12.5, display: "flex", gap: 6 }}><ImageIcon size={16} /> No product photo yet</div>}
           </div>
           <SectionHeading>Basic info</SectionHeading>
           <DetailRow label="Customer" value={customerName(s.customerId)} /><DetailRow label="Product type" value={productTypeName(s.productTypeId)} /><DetailRow label="Qty" value={s.qty} /><DetailRow label="ERP No." value={s.erpNo} /><DetailRow label="Manufacturing Order No." value={s.manufacturingOrderNo} /><DetailRow label="IDP No." value={s.idpNo} /><DetailRow label="IDC No." value={s.idcNo} /><DetailRow label="Dimensions (W×D×H)" value={dims} /><DetailRow label="Arm height" value={s.armHeight} /><DetailRow label="Seat height" value={s.seatHeight} />
@@ -4576,8 +4621,8 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
 
       <div style={{ marginTop: 20 }}>
         <SectionHeading>Material progress</SectionHeading>
-        <div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 6, marginBottom: 10 }}>Only components selected for this sample are shown. Photo proof is available only after the status is Done.</div>
-        {components.length === 0 ? <div style={{ color: COLORS.inkSoft, fontSize: 13.5, background: COLORS.bg, padding: 12, borderRadius: 8 }}>No required components selected. Edit the Sample and tick the components needed.</div> : (
+        <div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 6, marginBottom: 10 }}>Only components selected for this product are shown. Photo proof is available only after the status is Done.</div>
+        {components.length === 0 ? <div style={{ color: COLORS.inkSoft, fontSize: 13.5, background: COLORS.bg, padding: 12, borderRadius: 8 }}>No required components selected. Edit the Product and tick the components needed.</div> : (
           <div style={{ overflowX: "auto" }}><div style={{ minWidth: 760, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1.25fr 80px 150px 150px minmax(170px,1.2fr) 44px", gap: 8, fontSize: 11.5, color: COLORS.inkSoft, padding: "0 10px" }}><div>Component</div><div>Qty</div><div>Target date</div><div>Status</div><div>Photo proof</div><div></div></div>
             {components.map((c) => (
@@ -4598,7 +4643,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
 
       <div style={{ marginTop: 20 }}><SectionHeading>Revision history</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>{(s.revisions || []).map((r) => <div key={r.id} style={{ display: "flex", gap: 12, borderBottom: `1px solid ${COLORS.line}`, paddingBottom: 10 }}>{r.photo && <img src={r.photo} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }} />}<div><div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>{r.date}</div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.changeReason}</div>{r.note && <div style={{ fontSize: 13, color: COLORS.inkSoft }}>{r.note}</div>}</div></div>)}{(s.revisions || []).length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No revisions logged yet.</div>}<div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr", gap: 8 }}><Input type="date" value={newRevision.date} onChange={(e) => setNewRevision({ ...newRevision, date: e.target.value })} /><Input placeholder="What changed?" value={newRevision.changeReason} onChange={(e) => setNewRevision({ ...newRevision, changeReason: e.target.value })} /><Input placeholder="Photo URL (optional)" value={newRevision.photo} onChange={(e) => setNewRevision({ ...newRevision, photo: e.target.value })} /></div><div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8 }}><Input placeholder="Note (optional)" value={newRevision.note} onChange={(e) => setNewRevision({ ...newRevision, note: e.target.value })} /><Button small onClick={addRevision}><Plus size={13} /> Add revision</Button></div></div></div>
 
-      <div style={{ marginTop: 20 }}><SectionHeading>Related tasks</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{relatedTasks.length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No tasks linked to this sample yet.</div>}{relatedTasks.map((t) => <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.bg, padding: "8px 10px", borderRadius: 8, fontSize: 13 }}><div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.type || "Daily"} · {t.referencePerson || "—"}{t.deadline ? ` · ${t.deadline}` : ""}</div></div><button onClick={() => cycleTaskStatus(t)} style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}><Badge tone={taskStatusTone(t.status)}>{t.status}</Badge></button></div>)}<div style={{ display: "grid", gridTemplateColumns: "1fr 140px auto", gap: 8, marginTop: 4 }}><Input placeholder="Quick add a task for this sample…" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} /><Input type="date" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} /><Button small onClick={addRelatedTask}><Plus size={13} /> Add</Button></div></div></div>
+      <div style={{ marginTop: 20 }}><SectionHeading>Related tasks</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{relatedTasks.length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No tasks linked to this product yet.</div>}{relatedTasks.map((t) => <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.bg, padding: "8px 10px", borderRadius: 8, fontSize: 13 }}><div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.type || "Daily"} · {t.referencePerson || "—"}{t.deadline ? ` · ${t.deadline}` : ""}</div></div><button onClick={() => cycleTaskStatus(t)} style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}><Badge tone={taskStatusTone(t.status)}>{t.status}</Badge></button></div>)}<div style={{ display: "grid", gridTemplateColumns: "1fr 140px auto", gap: 8, marginTop: 4 }}><Input placeholder="Quick add a task for this product…" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} /><Input type="date" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} /><Button small onClick={addRelatedTask}><Plus size={13} /> Add</Button></div></div></div>
     </Panel>
   );
 }
@@ -4672,7 +4717,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       id: `sample-${s.id}`,
       date: s.targetDate,
       type: "sample",
-      label: s.name || "Unnamed sample",
+      label: s.name || "Unnamed product",
       subtitle: s.erpNo || s.id,
       sampleName: s.name || "",
       sampleId: s.id,
@@ -4761,9 +4806,9 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
     if (e.overdue) return { bg: "#FFF0EE", border: "#FFB7AE", text: "#B53B2D", accent: "#D94B4B", label: "OVERDUE" };
     if (e.status === "Done" || e.status === "Completed") return { bg: "#EAF6EE", border: "#B8DFC4", text: "#32724A", accent: "#4C9A68", label: "DONE" };
     if (e.type === "material") return { bg: "#F5EFE6", border: "#F4D3A7", text: "#9A5A2F", accent: "#C9B395", label: "MATERIAL" };
-    if (e.type === "sample") return { bg: "#F4EEE5", border: "#E4D6C4", text: "#8F755B", accent: "#DCC6A9", label: "SAMPLE" };
+    if (e.type === "sample") return { bg: "#F4EEE5", border: "#E4D6C4", text: "#8F755B", accent: "#DCC6A9", label: "PRODUCT" };
     if (e.taskType === "Daily") return { bg: "#EEF2FF", border: "#AFC0FF", text: "#3159C7", accent: "#4267E8", label: "DAILY" };
-    if (e.taskType === "Sample Test") return { bg: "#F3ECFF", border: "#CBB3FF", text: "#7040B5", accent: "#8B5CF6", label: "SAMPLE TEST" };
+    if (e.taskType === "Product Test") return { bg: "#F3ECFF", border: "#CBB3FF", text: "#7040B5", accent: "#8B5CF6", label: "PRODUCT TEST" };
     return { bg: "#F4EEE5", border: "#FFB98F", text: "#8F755B", accent: "#DCC6A9", label: "FOLLOW-UP" };
   };
 
@@ -4798,12 +4843,12 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
     });
   };
 
-  // Keep Material Progress on the linked Sample in sync immediately.
+  // Keep Material Progress on the linked Product in sync immediately.
   // The source of truth for component/material rows is sample_components; the
-  // linked sample.requiredComponents array is updated locally so Sample Detail
+  // linked product.requiredComponents array is updated locally so Sample Detail
   // reflects the change without requiring a page reload. When every material
-  // for a sample is Done, we also write a lightweight stage-status signal to
-  // the samples table so the Sample record itself shows that materials are ready.
+  // for a product is Done, we also write a lightweight stage-status signal to
+  // the products table so the Sample record itself shows that materials are ready.
   const syncMaterialToSample = (prepId, patch) => {
     const prep = materialPreps.find((p) => p.id === prepId);
     if (!prep) return;
@@ -4908,7 +4953,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
         <div>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".12em", color: COLORS.wood, textTransform: "uppercase" }}>Planning & Follow-up</div>
           <h1 style={{ fontFamily: FONT_HEAD, fontSize: 28, margin: "3px 0 0", letterSpacing: "-.03em" }}>Master Production Calendar</h1>
-          <div style={{ color: COLORS.inkSoft, fontSize: 12.5, marginTop: 4 }}>Drag any sample, material or task to reschedule it. The linked record is updated automatically.</div>
+          <div style={{ color: COLORS.inkSoft, fontSize: 12.5, marginTop: 4 }}>Drag any product, material or task to reschedule it. The linked record is updated automatically.</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: 3 }}>
@@ -4919,7 +4964,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        {[["Overdue", overdue.length, COLORS.red, COLORS.redSoft],["Due today", dueToday.length, COLORS.wood, COLORS.amberSoft],["This week", thisWeek.length, COLORS.amber, COLORS.amberSoft],["Sample on-time", onTimeRate === null ? "—" : `${onTimeRate}%`, COLORS.green, COLORS.greenSoft]].map(([label,value,color,bg]) => (
+        {[["Overdue", overdue.length, COLORS.red, COLORS.redSoft],["Due today", dueToday.length, COLORS.wood, COLORS.amberSoft],["This week", thisWeek.length, COLORS.amber, COLORS.amberSoft],["Product on-time", onTimeRate === null ? "—" : `${onTimeRate}%`, COLORS.green, COLORS.greenSoft]].map(([label,value,color,bg]) => (
           <div key={label} style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: "11px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}>
             <div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 2, fontSize: 20, lineHeight: 1, fontWeight: 850, color }}>{value}</div></div>
             <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, display: "grid", placeItems: "center", color }}><CalendarDays size={15} /></div>
@@ -4930,12 +4975,12 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}><Button small variant="subtle" onClick={() => moveWeek(-7)}>‹</Button><Button small variant="subtle" onClick={goToday}>Today</Button><Button small variant="subtle" onClick={() => moveWeek(7)}>›</Button><div style={{ fontSize: 16, fontWeight: 800, marginLeft: 4 }}>{formatWeek()}</div></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[['all','All'],['followup','Follow-up'],['daily','Daily'],['sample','Samples'],['material','Materials']].map(([k,l]) => <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? COLORS.wood : COLORS.line}`, background: filter === k ? COLORS.amberSoft : COLORS.panel, color: filter === k ? COLORS.woodDark : COLORS.inkSoft, borderRadius: 999, padding: "6px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{l}</button>)}
+          {[['all','All'],['followup','Follow-up'],['daily','Daily'],['sample','Products'],['material','Materials']].map(([k,l]) => <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? COLORS.wood : COLORS.line}`, background: filter === k ? COLORS.amberSoft : COLORS.panel, color: filter === k ? COLORS.woodDark : COLORS.inkSoft, borderRadius: 999, padding: "6px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{l}</button>)}
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: COLORS.inkSoft }}>
-        {[['#DCC6A9','Sample'],['#C9B395','Material'],['#4267E8','Daily'],['#8B5CF6','Sample Test'],['#D94B4B','Overdue'],['#4C9A68','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
+        {[['#DCC6A9','Product'],['#C9B395','Material'],['#4267E8','Daily'],['#8B5CF6','Product Test'],['#D94B4B','Overdue'],['#4C9A68','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
       </div>
 
       {view === "week" ? (
@@ -4969,12 +5014,12 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
             <form onSubmit={submitCreateTask} style={{ padding: 17, display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field label="Task name" width="100%"><Input autoFocus required value={newTask.name} onChange={(e) => setNewTask({ ...newTask, name: e.target.value })} placeholder="e.g. Follow-up with SKLUM on QC" /></Field>
-                <Field label="Task type"><Select value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>{TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
+                <Field label="Task type"><Select value={newTask.type} onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}>{TASK_TYPES.map((t) => <option key={t} value={t}>{taskTypeLabel(t)}</option>)}</Select></Field>
                 <Field label="Reference person(s)"><Input value={newTask.referencePerson} onChange={(e) => setNewTask({ ...newTask, referencePerson: e.target.value })} placeholder="e.g. Chị Hiền, Tôi" /></Field>
                 <Field label="Deadline"><Input type="date" value={newTask.deadline} onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })} /></Field>
                 <Field label="Status"><Select value={newTask.status} onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}>{TASK_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}</Select></Field>
                 <Field label="Priority"><Select value={newTask.priority} onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}><option value="">—</option>{PRIORITY_OPTIONS.map((pr) => <option key={pr} value={pr}>{pr}</option>)}</Select></Field>
-                <Field label="Linked sample"><Select value={newTask.sampleId} onChange={(e) => setNewTask({ ...newTask, sampleId: e.target.value })}><option value="">— None —</option>{samples.map((sample) => <option key={sample.id} value={sample.id}>{sample.erpNo || sample.id} — {sample.name || "(unnamed sample)"}</option>)}</Select></Field>
+                <Field label="Linked product"><Select value={newTask.sampleId} onChange={(e) => setNewTask({ ...newTask, sampleId: e.target.value })}><option value="">— None —</option>{samples.map((sample) => <option key={sample.id} value={sample.id}>{sample.erpNo || sample.id} — {sample.name || "(unnamed product)"}</option>)}</Select></Field>
               </div>
               <Field label="Description"><TextArea rows={3} value={newTask.description} onChange={(e) => setNewTask({ ...newTask, description: e.target.value })} placeholder="Add task description, details, or notes..." /></Field>
               <Field label="Note"><TextArea rows={2} value={newTask.note} onChange={(e) => setNewTask({ ...newTask, note: e.target.value })} /></Field>
@@ -4997,7 +5042,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
                 {(selectedEvent.type === "task" || selectedEvent.type === "sample") && <div style={{ marginTop: 10 }}><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Priority</div><Input value={editing?.priority || ""} onChange={(ev) => setEditing((x) => ({ ...x, priority: ev.target.value }))} placeholder="e.g. High Priority" /></div>}
                 {selectedEvent.type === "sample" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}><div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Waiting For</div><Input value={editing?.waitingFor || ""} onChange={(ev) => setEditing((x) => ({ ...x, waitingFor: ev.target.value }))} /></div><div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Next Action</div><Input value={editing?.nextAction || ""} onChange={(ev) => setEditing((x) => ({ ...x, nextAction: ev.target.value }))} /></div></div>}
                 {selectedEvent.type === "task" && <div style={{ marginTop: 10, background: COLORS.bg, borderRadius: 10, padding: 10 }}><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Details</div><div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.45 }}>{selectedEvent.description || "No description / note."}</div>{selectedEvent.referencePerson && <div style={{ marginTop: 6, fontSize: 10.5, color: COLORS.inkSoft }}>Reference: {selectedEvent.referencePerson}</div>}</div>}
-                {selectedEvent.sampleName && <div style={{ marginTop: 10, fontSize: 11.5, color: COLORS.inkSoft }}>Linked sample: <strong style={{ color: COLORS.ink }}>{selectedEvent.sampleName}</strong></div>}
+                {selectedEvent.sampleName && <div style={{ marginTop: 10, fontSize: 11.5, color: COLORS.inkSoft }}>Linked product: <strong style={{ color: COLORS.ink }}>{selectedEvent.sampleName}</strong></div>}
                 {selectedEvent.overdue && <div style={{ marginTop: 12, background: COLORS.redSoft, color: COLORS.red, borderRadius: 9, padding: "9px 10px", fontSize: 12, fontWeight: 700 }}>This item is overdue and should be followed up.</div>}
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 16, flexWrap: "wrap" }}><Button variant="ghost" onClick={() => { setSelectedEvent(null); setEditing(null); }}>Cancel</Button><div style={{ display: "flex", gap: 8 }}><Button variant="subtle" onClick={markDone}>✓ Mark Done</Button><Button onClick={saveEditing}>Save changes</Button></div></div>
               </>}
@@ -5306,7 +5351,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
   const selectedSample = editing?.sampleId ? samples.find((x) => x.id === editing.sampleId) : null;
   const sampleLabel = (id) => {
     const s = samples.find((x) => x.id === id);
-    return s ? `${s.erpNo || s.id} — ${s.name || "(unnamed sample)"}` : "";
+    return s ? `${s.erpNo || s.id} — ${s.name || "(unnamed product)"}` : "";
   };
 
   const filteredErpSamples = samples.filter((s) => {
@@ -5370,7 +5415,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderBottom: `1px solid ${COLORS.line}` }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.ink }}>Search ERP Code</div>
-                <div style={{ marginTop: 3, fontSize: 12.5, color: COLORS.inkSoft }}>Find and select a sample to link with this task</div>
+                <div style={{ marginTop: 3, fontSize: 12.5, color: COLORS.inkSoft }}>Find and select a product to link with this task</div>
               </div>
               <button type="button" onClick={() => setShowErpPicker(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: COLORS.inkSoft, padding: 6 }}><X size={20} /></button>
             </div>
@@ -5381,7 +5426,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
                   autoFocus
                   value={erpSearch}
                   onChange={(e) => setErpSearch(e.target.value)}
-                  placeholder="Search by ERP code, sample name, or customer..."
+                  placeholder="Search by ERP code, product name, or customer..."
                   style={{ width: "100%", paddingLeft: 36 }}
                 />
               </div>
@@ -5390,27 +5435,27 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ position: "sticky", top: 0, background: COLORS.panel, zIndex: 1 }}>
-                    {['ERP Code', 'Sample Name', 'Customer', 'Stage', ''].map((h, i) => <th key={i} style={{ textAlign: "left", padding: "11px 8px", borderBottom: `1px solid ${COLORS.line}`, color: COLORS.inkSoft, fontWeight: 700 }}>{h}</th>)}
+                    {['ERP Code', 'Product Name', 'Customer', 'Stage', ''].map((h, i) => <th key={i} style={{ textAlign: "left", padding: "11px 8px", borderBottom: `1px solid ${COLORS.line}`, color: COLORS.inkSoft, fontWeight: 700 }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredErpSamples.map((s) => (
                     <tr key={s.id} onClick={() => chooseErpSample(s)} style={{ cursor: "pointer", background: editing?.sampleId === s.id ? COLORS.amberSoft : "transparent" }}>
                       <td style={{ padding: "10px 8px", borderBottom: `1px solid ${COLORS.line}`, fontWeight: 700 }}>{s.erpNo || "—"}</td>
-                      <td style={{ padding: "10px 8px", borderBottom: `1px solid ${COLORS.line}` }}>{s.name || "(unnamed sample)"}</td>
+                      <td style={{ padding: "10px 8px", borderBottom: `1px solid ${COLORS.line}` }}>{s.name || "(unnamed product)"}</td>
                       <td style={{ padding: "10px 8px", borderBottom: `1px solid ${COLORS.line}` }}>{customerName(s.customerId) || "—"}</td>
                       <td style={{ padding: "10px 8px", borderBottom: `1px solid ${COLORS.line}` }}>{s.stage || "—"}</td>
                       <td style={{ padding: "10px 8px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "right" }}><Button type="button" small> Select </Button></td>
                     </tr>
                   ))}
                   {filteredErpSamples.length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: 28, textAlign: "center", color: COLORS.inkSoft }}>No matching samples found.</td></tr>
+                    <tr><td colSpan={5} style={{ padding: 28, textAlign: "center", color: COLORS.inkSoft }}>No matching products found.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: `1px solid ${COLORS.line}`, fontSize: 12, color: COLORS.inkSoft }}>
-              <span>{filteredErpSamples.length} sample{filteredErpSamples.length === 1 ? "" : "s"} found</span>
+              <span>{filteredErpSamples.length} product{filteredErpSamples.length === 1 ? "" : "s"} found</span>
               <Button type="button" variant="ghost" onClick={() => setShowErpPicker(false)}>Cancel</Button>
             </div>
           </div>
@@ -5426,7 +5471,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
               </Field>
               <Field label="Task type">
                 <Select value={editing.type || "Daily"} onChange={(e) => setEditing({ ...editing, type: e.target.value })}>
-                  {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {TASK_TYPES.map((t) => <option key={t} value={t}>{taskTypeLabel(t)}</option>)}
                 </Select>
               </Field>
               <Field label="Reference person(s)">
@@ -5461,7 +5506,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
                 </div>
                 {selectedSample && (
                   <div style={{ marginTop: 6, fontSize: 12, color: COLORS.inkSoft }}>
-                    {selectedSample.name || "(unnamed sample)"} · {customerName(selectedSample.customerId) || "No customer"}
+                    {selectedSample.name || "(unnamed product)"} · {customerName(selectedSample.customerId) || "No customer"}
                   </div>
                 )}
               </Field>
@@ -5490,7 +5535,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
           <Table
             columns={[
               { key: "name", label: "Task" },
-              { key: "type", label: "Type", render: (t) => <Badge tone={t.type === "Sample" ? "wood" : t.type === "Sample Test" ? "teal" : "neutral"}>{t.type || "Daily"}</Badge> },
+              { key: "type", label: "Type", render: (t) => <Badge tone={t.type === "Sample" ? "wood" : t.type === "Sample Test" ? "teal" : "neutral"}>{taskTypeLabel(t.type)}</Badge> },
               { key: "referencePerson", label: "Reference person" },
               { key: "sample", label: "ERP Code", render: (t) => sampleLabel(t.sampleId) || "—" },
               { key: "deadline", label: "Deadline", render: (t) => <span style={{ color: isTaskOverdue(t) ? COLORS.red : COLORS.ink, fontWeight: isTaskOverdue(t) ? 700 : 400 }}>{t.deadline || "—"}</span> },
@@ -5574,7 +5619,7 @@ function TaskKanbanBoard({ tasks, sampleLabel, moveStatus, onCardClick }) {
                     {t.referencePerson && <div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.referencePerson}</div>}
                     {sampleLabel(t.sampleId) && <div style={{ fontSize: 11, color: COLORS.teal, marginTop: 2 }}>🔗 {sampleLabel(t.sampleId)}</div>}
                     <div style={{ display: "flex", gap: 5, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      {t.type && <Badge tone={t.type === "Sample" ? "wood" : t.type === "Sample Test" ? "teal" : "neutral"}>{t.type}</Badge>}
+                      {t.type && <Badge tone={t.type === "Sample" ? "wood" : t.type === "Sample Test" ? "teal" : "neutral"}>{taskTypeLabel(t.type)}</Badge>}
                       {t.priority && <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>}
                       {t.deadline && <Badge tone={isTaskOverdue(t) ? "red" : "neutral"}>{t.deadline}</Badge>}
                     </div>
