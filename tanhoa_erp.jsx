@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
-import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil } from "lucide-react";
+import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
@@ -856,7 +856,7 @@ class ErrorBoundary extends React.Component {
 
 export default function App() {
   const qrSampleId = new URLSearchParams(window.location.search).get("sample") || "";
-  // Public Sample Passport stays accessible without login.
+  // Public Product Passport stays accessible without login.
   if (qrSampleId) {
     return (
       <ErrorBoundary>
@@ -987,10 +987,10 @@ function levelCan(level, module, action = "view") {
       if (qrSampleId) {
         try {
           const data = await loadPublicSample(qrSampleId);
-          if (!data) setPublicSampleError("Sample not found or no longer available.");
+          if (!data) setPublicSampleError("Product not found or no longer available.");
           else setPublicSample(data);
         } catch (err) {
-          console.error("Public sample load failed", err);
+          console.error("Public product load failed", err);
           setPublicSampleError("Could not load this product. Please check the QR link or contact Tân Hòa.");
         } finally {
           setLoaded(true);
@@ -2474,7 +2474,7 @@ async function downloadExcelWithEmbeddedImages(filename, headers, rows, embedded
   const sheetXml = xlsxSheetXml(headers, rows, imageColumnIndices);
   files.push({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Default Extension="gif" ContentType="image/gif"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>${imageCols.size ? `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : ""}<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>` });
   files.push({ name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` });
-  files.push({ name: "xl/workbook.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="Samples" sheetId="1" r:id="rId1"/></sheets></workbook>` });
+  files.push({ name: "xl/workbook.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets></workbook>` });
   files.push({ name: "xl/_rels/workbook.xml.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/></Relationships>` });
   files.push({ name: "xl/theme/theme1.xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Tân Hòa"><a:themeElements><a:clrScheme name="Default"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="31513F"/></a:dk2><a:lt2><a:srgbClr val="F7F7F4"/></a:lt2><a:accent1><a:srgbClr val="A65F2E"/></a:accent1><a:accent2><a:srgbClr val="6D7E74"/></a:accent2><a:accent3><a:srgbClr val="D7C7A6"/></a:accent3><a:accent4><a:srgbClr val="B8C7B8"/></a:accent4><a:accent5><a:srgbClr val="D9B7A7"/></a:accent5><a:accent6><a:srgbClr val="9FB7A8"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont/><a:minorFont/></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst/><a:lnStyleLst/><a:effectStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements></a:theme>` });
   files.push({ name: "xl/worksheets/sheet1.xml", data: sheetXml });
@@ -2514,7 +2514,7 @@ async function downloadExcelWithEmbeddedImages(filename, headers, rows, embedded
 }
 
 
-/* ---------------- Sample Excel import ---------------- */
+/* ---------------- Product Excel import ---------------- */
 
 function normalizeImportHeader(value) {
   return String(value ?? "").trim().toLowerCase().replace(/[\s._-]+/g, " ");
@@ -2572,10 +2572,12 @@ function toImportNumber(value) {
 function calculatePackaging(qty, pcsPerCtn, cartonLength, cartonWidth, cartonHeight) {
   const q = Number(qty), pcs = Number(pcsPerCtn);
   const l = Number(cartonLength), w = Number(cartonWidth), h = Number(cartonHeight);
-  const cartonQty = q > 0 && pcs > 0 ? q / pcs : 0;
+  // Carton Qty means the physical number of cartons. A partial last carton
+  // still counts as one carton, so the quantity is rounded up.
+  const cartonQty = q > 0 && pcs > 0 ? Math.ceil(q / pcs) : 0;
   const cbm = l > 0 && w > 0 && h > 0 && cartonQty > 0 ? (l * w * h / 1e9 * cartonQty) : 0;
   return {
-    cartonQty: cartonQty > 0 ? (Number.isInteger(cartonQty) ? cartonQty : Number(cartonQty.toFixed(4))) : "",
+    cartonQty: cartonQty > 0 ? cartonQty : "",
     cbm: cbm > 0 ? Number(cbm.toFixed(6)) : "",
   };
 }
@@ -3204,7 +3206,9 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   const [viewing, setViewing] = useState(null);
   const [filterStage, setFilterStage] = useState("All");
   const [filterCustomer, setFilterCustomer] = useState("All");
+  const [filterProductStatus, setFilterProductStatus] = useState("All");
   const [search, setSearch] = useState("");
+  const [tablePage, setTablePage] = useState(1);
   const [viewMode, setViewMode] = useState("kanban");
   const [imageUploading, setImageUploading] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -3251,7 +3255,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
     const idSet = new Set(ids || []);
     if (!idSet.size) return;
     const count = idSet.size;
-    if (!confirm(`Delete ${count} selected sample${count === 1 ? "" : "s"}? This action cannot be undone.`)) return;
+    if (!confirm(`Delete ${count} selected product${count === 1 ? "" : "s"}? This action cannot be undone.`)) return;
     saveSamples(samples.filter((s) => !idSet.has(s.id)));
     if (viewing && idSet.has(viewing.id)) setViewing(null);
   };
@@ -3313,7 +3317,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         const file = new File([blob], `sample-${Date.now()}.${(blob.type || "image/jpeg").split("/")[1] || "jpg"}`, { type: blob.type || "image/jpeg" });
         next.image = await uploadStorageImage(file, `samples/draft-${Date.now()}`, "sample");
       } catch (err) {
-        console.warn("Could not store the uploaded sample image:", err);
+        console.warn("Could not store the uploaded product image:", err);
       }
     }
     setEditing(next);
@@ -3345,7 +3349,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       setShowForm(false);
       setEditing(null);
     } catch (err) {
-      console.error("Sample save failed:", err);
+      console.error("Product save failed:", err);
       alert("Couldn't save this product: " + (err && err.message ? err.message : String(err)));
     }
   };
@@ -3353,13 +3357,15 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   const set = (field) => (e) => setEditing({ ...editing, [field]: e.target.value });
   useEffect(() => {
     if (!editing) return;
-    const qty = Number(editing.qty);
-    const pcs = Number(editing.pcsPerCtn);
-    const l = Number(editing.cartonLength), w = Number(editing.cartonWidth), h = Number(editing.cartonHeight);
-    const cartonQty = qty > 0 && pcs > 0 ? qty / pcs : 0;
-    const cbm = l > 0 && w > 0 && h > 0 && cartonQty > 0 ? (l * w * h / 1e9 * cartonQty) : 0;
-    const nextCartonQty = cartonQty > 0 ? (Number.isInteger(cartonQty) ? cartonQty : Number(cartonQty.toFixed(4))) : "";
-    const nextCbm = cbm > 0 ? Number(cbm.toFixed(6)) : "";
+    const packaging = calculatePackaging(
+      editing.qty,
+      editing.pcsPerCtn,
+      editing.cartonLength,
+      editing.cartonWidth,
+      editing.cartonHeight
+    );
+    const nextCartonQty = packaging.cartonQty;
+    const nextCbm = packaging.cbm;
     if (editing.cartonQty !== nextCartonQty || editing.cbm !== nextCbm) {
       setEditing((current) => current ? { ...current, cartonQty: nextCartonQty, cbm: nextCbm } : current);
     }
@@ -3410,8 +3416,9 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
     return true;
   };
 
-  const filtered = samples.filter((s) => matchesSearchAndCustomer(s) && (filterStage === "All" || normalizeSampleWorkflowStage(s.stage) === filterStage));
+  const filtered = samples.filter((s) => matchesSearchAndCustomer(s) && (filterStage === "All" || normalizeSampleWorkflowStage(s.stage) === filterStage) && (filterProductStatus === "All" || String(s.productStatus || "").toLowerCase() === filterProductStatus.toLowerCase()));
   const kanbanSamples = samples.filter(matchesSearchAndCustomer);
+  useEffect(() => { setTablePage(1); }, [search, filterCustomer, filterStage, filterProductStatus]);
 
   const {
     mainMaterials = [], finishes = [], woodSurface = [], fabricTypes = [],
@@ -3439,7 +3446,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           ["In Progress", inProgress, "Products beyond request stage", CalendarDays, "#6B8BB5"],
           ["Overdue", overdue, "Past target date", AlertCircle, COLORS.red],
           ["Ready for Assembly", ready, "All required materials done", CheckCircle2, COLORS.green],
-          ["Completed", completed, "Completed / shipped samples", CheckCircle2, COLORS.woodDark],
+          ["Completed", completed, "Completed / shipped products", CheckCircle2, COLORS.woodDark],
         ];
         return <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(150px, 1fr))", gap: 12 }}>
           {cards.map(([label,value,sub,Icon,color]) => <div key={label} style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 15, padding: 15, boxShadow: "0 5px 18px rgba(17,17,17,.035)" }}>
@@ -3463,23 +3470,26 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           <option value="All">All customers</option>
           {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
-        {viewMode === "grid" && (
-          <Select value={filterStage} onChange={(e) => setFilterStage(e.target.value)} style={{ width: 240 }}>
-            <option value="All">All stages</option>
-            {SAMPLE_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
-        )}
-        <div style={{ display: "flex", border: `1px solid ${COLORS.line}`, borderRadius: 8, overflow: "hidden" }}>
-          <button
-            onClick={() => setViewMode("kanban")}
-            style={{ padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY, background: viewMode === "kanban" ? COLORS.wood : "#fff", color: viewMode === "kanban" ? "#fff" : COLORS.ink }}
-          >
+        <Select value={filterStage} onChange={(e) => setFilterStage(e.target.value)} style={{ width: 190 }}>
+          <option value="All">All stages</option>
+          {SAMPLE_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </Select>
+        <Select value={filterProductStatus} onChange={(e) => setFilterProductStatus(e.target.value)} style={{ width: 150 }}>
+          <option value="All">All status</option>
+          <option value="Accept">Accept</option>
+          <option value="Cancel">Cancel</option>
+        </Select>
+        <button type="button" style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 12px", border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#fff", color: COLORS.ink, fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 650, cursor: "pointer" }}>
+          <SlidersHorizontal size={14} /> More filters
+        </button>
+        <div style={{ display: "flex", border: `1px solid ${COLORS.line}`, borderRadius: 9, overflow: "hidden", background: "#fff" }}>
+          <button type="button" onClick={() => setViewMode("kanban")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "kanban" ? COLORS.wood : "#fff", color: viewMode === "kanban" ? "#fff" : COLORS.ink }}>
             Kanban
           </button>
-          <button
-            onClick={() => setViewMode("grid")}
-            style={{ padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY, background: viewMode === "grid" ? COLORS.wood : "#fff", color: viewMode === "grid" ? "#fff" : COLORS.ink }}
-          >
+          <button type="button" onClick={() => setViewMode("table")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "table" ? COLORS.wood : "#fff", color: viewMode === "table" ? "#fff" : COLORS.ink }}>
+            <Table2 size={14} /> Table
+          </button>
+          <button type="button" onClick={() => setViewMode("grid")} style={{ padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "grid" ? COLORS.wood : "#fff", color: viewMode === "grid" ? "#fff" : COLORS.ink }}>
             Grid
           </button>
         </div>
@@ -3641,7 +3651,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
               <Field label="Carton Qty"><Input value={editing.cartonQty || ""} readOnly style={{ background: "#F7F5F2" }} /></Field>
               <Field label="CBM"><Input value={editing.cbm || ""} readOnly style={{ background: "#F7F5F2", fontWeight: 700 }} /></Field>
             </div>
-            <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: -6 }}>Carton Qty = Product Qty ÷ Pcs/Ctn. CBM = L × W × H ÷ 10⁹ × Carton Qty.</div>
+            <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: -6 }}>Carton Qty = CEILING(Product Qty ÷ Pcs/Ctn). CBM = Carton L × Carton W × Carton H ÷ 10⁹ × Carton Qty.</div>
 
             <SectionHeading>Reference & notes</SectionHeading>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
@@ -3780,6 +3790,21 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           onShowQR={(s) => setQrSample(s)}
           onSelectionChange={setSelectedSampleIds}
         />
+      ) : viewMode === "table" ? (
+        <ProductTableView
+          products={filtered}
+          productTypeName={productTypeName}
+          customerName={customerName}
+          materialPreps={materialPreps}
+          selectedIds={selectedSampleIds}
+          onSelectionChange={setSelectedSampleIds}
+          page={tablePage}
+          onPageChange={setTablePage}
+          onRowClick={(s) => { setViewing(s); setShowForm(false); }}
+          onEdit={(s) => startEdit(s)}
+          onShowQR={(s) => setQrSample(s)}
+          onDelete={(id) => remove(id)}
+        />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
           {filtered.map((s) => (
@@ -3799,6 +3824,109 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       )}
     </div>
 
+  );
+}
+
+
+function ProductTableView({ products, productTypeName, customerName, materialPreps, selectedIds, onSelectionChange, page, onPageChange, onRowClick, onEdit, onShowQR, onDelete }) {
+  const PAGE_SIZE = 15;
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const rows = products.slice(start, start + PAGE_SIZE);
+  const selectedSet = new Set(selectedIds || []);
+  const allVisibleSelected = rows.length > 0 && rows.every((p) => selectedSet.has(p.id));
+
+  const toggle = (id) => {
+    const next = new Set(selectedSet);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onSelectionChange(Array.from(next));
+  };
+
+  const toggleAllVisible = () => {
+    const next = new Set(selectedSet);
+    if (allVisibleSelected) rows.forEach((p) => next.delete(p.id));
+    else rows.forEach((p) => next.add(p.id));
+    onSelectionChange(Array.from(next));
+  };
+
+  const readiness = (p) => getMaterialReadiness(p, materialPreps);
+  const stageTone = (stage) => {
+    const s = normalizeSampleWorkflowStage(stage);
+    if (s === "Shipping") return { bg: "#EEF7F0", color: "#2F7A45" };
+    if (s === "Quality Check" || s === "Customer Correction") return { bg: "#FFF5E8", color: "#9A6B2F" };
+    if (s === "Assembly") return { bg: "#EEF3FA", color: "#4D6F9C" };
+    return { bg: "#F3F4F6", color: "#5E6470" };
+  };
+
+  if (!products.length) return (
+    <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 14, padding: 48, textAlign: "center", color: COLORS.inkSoft }}>
+      No products match your search/filters.
+    </div>
+  );
+
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 28px rgba(31,41,55,.045)" }}>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", minWidth: 1120, borderCollapse: "separate", borderSpacing: 0, fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ background: "#F8FAFC" }}>
+              <th style={{ width: 44, padding: "11px 12px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "center" }}>
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select visible products" />
+              </th>
+              {[["Product ID",110],["Product",220],["Customer",145],["ERP No.",175],["Product Status",115],["Stage",155],["Target Date",115],["Materials",125],["Actions",100]].map(([label,width]) => (
+                <th key={label} style={{ minWidth: width, padding: "11px 10px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "left", color: "#697386", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const tone = stageTone(p.stage);
+              const ready = readiness(p);
+              const selected = selectedSet.has(p.id);
+              return (
+                <tr key={p.id} onClick={() => onRowClick(p)} style={{ background: selected ? "#FCF8F2" : "#fff", cursor: "pointer" }} onMouseEnter={(e) => { e.currentTarget.style.background = selected ? "#FBF4E8" : "#F9FAFB"; }} onMouseLeave={(e) => { e.currentTarget.style.background = selected ? "#FCF8F2" : "#fff"; }}>
+                  <td style={{ padding: "10px 12px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={selected} onChange={() => toggle(p.id)} aria-label={`Select ${p.id}`} />
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, fontWeight: 750, color: "#252B36", whiteSpace: "nowrap" }}>{p.id || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 180 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 7, background: "#F1F3F5", border: `1px solid ${COLORS.line}`, display: "grid", placeItems: "center", overflow: "hidden", flex: "0 0 auto" }}>
+                        {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageIcon size={15} color="#9AA2AF" />}
+                      </div>
+                      <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700, color: "#20242C", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name || "(unnamed product)"}</div><div style={{ color: "#8A93A2", fontSize: 10.5, marginTop: 2 }}>{productTypeName(p.productTypeId) || "Product"}</div></div>
+                    </div>
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, color: "#4B5563" }}>{customerName(p.customerId) || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11.5, color: "#4B5563", whiteSpace: "nowrap" }}>{p.erpNo || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}>
+                    <span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 999, background: String(p.productStatus || "").toLowerCase() === "cancel" ? "#FEF0F0" : "#EEF7F0", color: String(p.productStatus || "").toLowerCase() === "cancel" ? "#B54747" : "#32764A", fontSize: 10.5, fontWeight: 750 }}>{p.productStatus || "—"}</span>
+                  </td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}><span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 6, background: tone.bg, color: tone.color, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap" }}>{normalizeSampleWorkflowStage(p.stage)}</span></td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, color: p.targetDate && p.targetDate < todayStr() ? COLORS.red : "#4B5563", whiteSpace: "nowrap" }}>{p.targetDate || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}><span style={{ color: ready.status === "Ready" ? "#2F7A45" : "#9A6B2F", fontWeight: 700 }}>{ready.status === "Ready" ? "Ready" : `${ready.done}/${ready.total || 0}`}</span></td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                      <button type="button" title="Edit" onClick={() => onEdit(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><Pencil size={13} /></button>
+                      <button type="button" title="QR" onClick={() => onShowQR(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><QrCodeIcon size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderTop: `1px solid ${COLORS.line}`, background: "#fff", color: "#7A8493", fontSize: 11.5 }}>
+        <div>Total Rows: <b style={{ color: "#374151" }}>{products.length.toLocaleString()}</b>{selectedIds.length ? <span style={{ marginLeft: 12 }}>Selected: <b style={{ color: COLORS.woodDark }}>{selectedIds.length}</b></span> : null}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button type="button" disabled={safePage <= 1} onClick={() => onPageChange(safePage - 1)} style={{ width: 30, height: 30, border: `1px solid ${COLORS.line}`, borderRadius: 7, background: "#fff", cursor: safePage <= 1 ? "not-allowed" : "pointer", opacity: safePage <= 1 ? .45 : 1 }}><ChevronLeft size={14} /></button>
+          <span style={{ minWidth: 70, textAlign: "center", color: "#4B5563", fontWeight: 650 }}>Page {safePage} / {totalPages}</span>
+          <button type="button" disabled={safePage >= totalPages} onClick={() => onPageChange(safePage + 1)} style={{ width: 30, height: 30, border: `1px solid ${COLORS.line}`, borderRadius: 7, background: "#fff", cursor: safePage >= totalPages ? "not-allowed" : "pointer", opacity: safePage >= totalPages ? .45 : 1 }}><ChevronRight size={14} /></button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -4845,7 +4973,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
 
   // Keep Material Progress on the linked Product in sync immediately.
   // The source of truth for component/material rows is sample_components; the
-  // linked product.requiredComponents array is updated locally so Sample Detail
+  // linked product.requiredComponents array is updated locally so Product Detail
   // reflects the change without requiring a page reload. When every material
   // for a product is Done, we also write a lightweight stage-status signal to
   // the products table so the Sample record itself shows that materials are ready.
