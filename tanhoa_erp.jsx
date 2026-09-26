@@ -53,7 +53,7 @@ async function loadPublicSampleMaterialImages(sampleId) {
 
 /* ---------------------------------------------------------
    TÂN HÒA OUTDOOR FURNITURE — SALES ERP
-   Customers → Quotes → Orders → Samples → Production → Shipping
+   Customers → Quotes → Orders → Products → Production → Shipping
    Data persists in Supabase Postgres. Images currently use the existing app image URL/data model.
 --------------------------------------------------------- */
 
@@ -943,7 +943,7 @@ function levelCan(level, module, action = "view") {
   const l = Number(level ?? 3);
   if (l === 0) return true;
 
-  // Level 1 test role: ONLY Samples, Tasks and Calendar.
+  // Level 1 test role: ONLY Products, Tasks and Calendar.
   // Keep this intentionally strict so the test account cannot navigate to
   // other ERP modules from the sidebar.
   if (l === 1) {
@@ -1054,7 +1054,7 @@ function levelCan(level, module, action = "view") {
     materialPreps: (next) => {
       // sample_components is the source of truth for individual material status.
       // Keep the local Sample view synchronized as well, and persist the linked
-      // Sample stage status when every material for that Sample is Done.
+      // Product stage status when every material for that Product is Done.
       setMaterialPreps(next);
       saveCollection("sample_components", materialPreps, next, adapters.components).catch((e) => alert("Material progress save failed: " + e.message));
 
@@ -1083,7 +1083,7 @@ function levelCan(level, module, action = "view") {
           };
         });
 
-        // Persist Sample rows whose material-derived state changed. This writes
+        // Persist Product rows whose material-derived state changed. This writes
         // stage_status back to public.samples; requiredComponents is intentionally
         // kept as local UI state because the normalized material rows live in
         // public.sample_components.
@@ -1168,7 +1168,7 @@ function levelCan(level, module, action = "view") {
     if (publicSampleError) {
       return <PublicSampleError message={publicSampleError} />;
     }
-    return <SampleQuickViewPublic data={publicSample} />;
+    return <ProductQuickViewPublic data={publicSample} />;
   }
 
   const NAV = [
@@ -1462,7 +1462,7 @@ function levelCan(level, module, action = "view") {
           />
         )}
         {view === "samples" && levelCan(currentUser?.level, "samples") && (
-          <SamplesView
+          <ProductsView
             samples={samples}
             saveSamples={setAndSave.samples}
             customers={customers}
@@ -2572,12 +2572,10 @@ function toImportNumber(value) {
 function calculatePackaging(qty, pcsPerCtn, cartonLength, cartonWidth, cartonHeight) {
   const q = Number(qty), pcs = Number(pcsPerCtn);
   const l = Number(cartonLength), w = Number(cartonWidth), h = Number(cartonHeight);
-  // Carton Qty means the physical number of cartons. A partial last carton
-  // still counts as one carton, so the quantity is rounded up.
-  const cartonQty = q > 0 && pcs > 0 ? Math.ceil(q / pcs) : 0;
+  const cartonQty = q > 0 && pcs > 0 ? q / pcs : 0;
   const cbm = l > 0 && w > 0 && h > 0 && cartonQty > 0 ? (l * w * h / 1e9 * cartonQty) : 0;
   return {
-    cartonQty: cartonQty > 0 ? cartonQty : "",
+    cartonQty: cartonQty > 0 ? (Number.isInteger(cartonQty) ? cartonQty : Number(cartonQty.toFixed(4))) : "",
     cbm: cbm > 0 ? Number(cbm.toFixed(6)) : "",
   };
 }
@@ -2889,7 +2887,7 @@ function ImportStatCard({ label, value, tone }) {
   return <div style={{ padding: "11px 12px", border: `1px solid ${COLORS.line}`, borderRadius: 10, background: COLORS.bg }}><div style={{ fontSize: 10.5, color: COLORS.inkSoft }}>{label}</div><div style={{ marginTop: 3, fontSize: 20, fontWeight: 750, color }}>{value}</div></div>;
 }
 
-function SampleImportModal({ samples, saveSamples, customers, productTypes, materialLists, onClose }) {
+function ProductImportModal({ samples, saveSamples, customers, productTypes, materialLists, onClose }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [parsing, setParsing] = useState(false);
@@ -2944,7 +2942,7 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
         <div style={{ padding: 18, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ padding: 14, borderRadius: 12, background: "#F5F1E9", border: `1px solid ${COLORS.line}` }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>How to import</div>
-            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one product per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the product photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here. <b>Matching rule:</b> if ERP Code already exists, the existing product is updated; if it does not exist, a new product is created.</div>
+            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one product per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the product photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here. <b>Matching rule:</b> ERP Code is the primary update key. If ERP Code already exists, the existing product is updated in place; if it does not exist, a new product is created.</div>
           </div>
           <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 110, border: `2px dashed ${COLORS.line}`, borderRadius: 14, cursor: "pointer", background: file ? COLORS.bg : "#fff" }}>
             <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} style={{ display: "none" }} />
@@ -2968,7 +2966,7 @@ function SampleImportModal({ samples, saveSamples, customers, productTypes, mate
   );
 }
 
-function SampleExportModal({ samples, customers, productTypes, materialLists, materialPreps, initialSampleId, selectedSampleIds = [], onClose }) {
+function ProductExportModal({ samples, customers, productTypes, materialLists, materialPreps, initialSampleId, selectedSampleIds = [], onClose }) {
   const [selectedKeys, setSelectedKeys] = useState(() => SAMPLE_EXPORT_FIELDS.map((f) => f.key));
   const [fieldSearch, setFieldSearch] = useState("");
   const [filters, setFilters] = useState({});
@@ -3176,7 +3174,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
             </div>
           ) : (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>Product information found</div><div style={{ fontSize: 12, color: COLORS.inkSoft }}>Review or edit the extracted values, then apply them to the Sample form.</div></div><Button small variant="subtle" onClick={() => setResult(null)}>← Analyze again</Button></div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div><div style={{ fontWeight: 800, fontSize: 16 }}>Product information found</div><div style={{ fontSize: 12, color: COLORS.inkSoft }}>Review or edit the extracted values, then apply them to the Product form.</div></div><Button small variant="subtle" onClick={() => setResult(null)}>← Analyze again</Button></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {rows.map(([label, key]) => {
                   const value = result[key] ?? "";
@@ -3200,7 +3198,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
 }
 
 
-function SamplesView({ samples, saveSamples, customers, customerName, productTypes, productTypeName, orders, materialLists, saveMaterialList, materialPreps, saveMaterialPreps, tasks, saveTasks }) {
+function ProductsView({ samples, saveSamples, customers, customerName, productTypes, productTypeName, orders, materialLists, saveMaterialList, materialPreps, saveMaterialPreps, tasks, saveTasks }) {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState(null);
@@ -3357,15 +3355,13 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   const set = (field) => (e) => setEditing({ ...editing, [field]: e.target.value });
   useEffect(() => {
     if (!editing) return;
-    const packaging = calculatePackaging(
-      editing.qty,
-      editing.pcsPerCtn,
-      editing.cartonLength,
-      editing.cartonWidth,
-      editing.cartonHeight
-    );
-    const nextCartonQty = packaging.cartonQty;
-    const nextCbm = packaging.cbm;
+    const qty = Number(editing.qty);
+    const pcs = Number(editing.pcsPerCtn);
+    const l = Number(editing.cartonLength), w = Number(editing.cartonWidth), h = Number(editing.cartonHeight);
+    const cartonQty = qty > 0 && pcs > 0 ? qty / pcs : 0;
+    const cbm = l > 0 && w > 0 && h > 0 && cartonQty > 0 ? (l * w * h / 1e9 * cartonQty) : 0;
+    const nextCartonQty = cartonQty > 0 ? (Number.isInteger(cartonQty) ? cartonQty : Number(cartonQty.toFixed(4))) : "";
+    const nextCbm = cbm > 0 ? Number(cbm.toFixed(6)) : "";
     if (editing.cartonQty !== nextCartonQty || editing.cbm !== nextCbm) {
       setEditing((current) => current ? { ...current, cartonQty: nextCartonQty, cbm: nextCbm } : current);
     }
@@ -3373,7 +3369,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
 
   /* Adds a brand-new item to a Materials master list (e.g. a fabric color
      that doesn't exist yet) and returns its new id, so a ComboSelect can
-     select it immediately without leaving the Sample form. */
+     select it immediately without leaving the Product form. */
   const addMaterialListItem = (listKey, name) => {
     const tab = MATERIAL_LIST_TABS.find((t) => t.key === listKey);
     const list = materialLists[listKey] || [];
@@ -3651,7 +3647,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
               <Field label="Carton Qty"><Input value={editing.cartonQty || ""} readOnly style={{ background: "#F7F5F2" }} /></Field>
               <Field label="CBM"><Input value={editing.cbm || ""} readOnly style={{ background: "#F7F5F2", fontWeight: 700 }} /></Field>
             </div>
-            <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: -6 }}>Carton Qty = CEILING(Product Qty ÷ Pcs/Ctn). CBM = Carton L × Carton W × Carton H ÷ 10⁹ × Carton Qty.</div>
+            <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: -6 }}>Carton Qty = Product Qty ÷ Pcs/Ctn. CBM = L × W × H ÷ 10⁹ × Carton Qty.</div>
 
             <SectionHeading>Reference & notes</SectionHeading>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
@@ -3730,7 +3726,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       )}
 
       {viewing && !showForm && (
-        <SampleDetail
+        <ProductDetail
           sample={viewing}
           customerName={customerName}
           productTypeName={productTypeName}
@@ -3765,9 +3761,9 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         onApply={applyAIDescription}
         onClose={() => setShowAIDescription(false)}
       />}
-      {showImport && <SampleImportModal samples={samples} saveSamples={saveSamples} customers={customers} productTypes={productTypes} materialLists={materialLists} onClose={() => setShowImport(false)} />}
-      {showExport && <SampleExportModal samples={samples} customers={customers} productTypes={productTypes} materialLists={materialLists} materialPreps={materialPreps} initialSampleId={exportSampleId} selectedSampleIds={selectedSampleIds} onClose={() => { setShowExport(false); setExportSampleId(null); }} />}
-      {qrSample && <SampleQRModal sample={qrSample} customerName={customerName(qrSample.customerId)} onClose={() => setQrSample(null)} />}
+      {showImport && <ProductImportModal samples={samples} saveSamples={saveSamples} customers={customers} productTypes={productTypes} materialLists={materialLists} onClose={() => setShowImport(false)} />}
+      {showExport && <ProductExportModal samples={samples} customers={customers} productTypes={productTypes} materialLists={materialLists} materialPreps={materialPreps} initialSampleId={exportSampleId} selectedSampleIds={selectedSampleIds} onClose={() => { setShowExport(false); setExportSampleId(null); }} />}
+      {qrSample && <ProductQRModal sample={qrSample} customerName={customerName(qrSample.customerId)} onClose={() => setQrSample(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>
@@ -4435,7 +4431,7 @@ function PublicSampleError({ message }) {
   );
 }
 
-function SampleQuickViewPublic({ data }) {
+function ProductQuickViewPublic({ data }) {
   const sample = data || {};
   const url = samplePublicUrl(sample.id);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -4563,7 +4559,7 @@ function PublicStat({ label, value }) {
   return <div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>{label}</div><div style={{ fontWeight: 800, marginTop: 4, overflowWrap: "anywhere" }}>{value || "—"}</div></div>;
 }
 
-function SampleQRModal({ sample, customerName, onClose }) {
+function ProductQRModal({ sample, customerName, onClose }) {
   const canvasRef = useRef(null);
   const [dataUrl, setDataUrl] = useState("");
   const url = samplePublicUrl(sample.id);
@@ -4604,7 +4600,7 @@ function SampleQRModal({ sample, customerName, onClose }) {
 }
 
 
-function SampleQRInline({ sample, compact = false }) {
+function ProductQRInline({ sample, compact = false }) {
   const [dataUrl, setDataUrl] = useState("");
   const url = samplePublicUrl(sample.id);
   useEffect(() => { QRCode.toDataURL(url, { width: compact ? 120 : 220, margin: 1, errorCorrectionLevel: "M" }).then(setDataUrl).catch(() => {}); }, [url, compact]);
@@ -4615,7 +4611,7 @@ function SampleQRInline({ sample, compact = false }) {
   </div>;
 }
 
-function SampleQuickView({ sample, customerName, productTypeName, materialLists = {}, materialPreps }) {
+function ProductQuickView({ sample, customerName, productTypeName, materialLists = {}, materialPreps }) {
   const readiness = getMaterialReadiness(sample, materialPreps);
   const missing = readiness.missing || [];
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -4652,7 +4648,7 @@ function DetailRow({ label, value }) {
   );
 }
 
-function SampleDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR }) {
+function ProductDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR }) {
   const { mainMaterials = [], finishes = [], woodSurface = [], fabricTypes = [], fabricColors = [], ropeTypes = [], ropeColors = [], cemboardColors = [] } = materialLists;
   const dims = [s.width, s.depth, s.height].filter((v) => v !== "" && v != null).length ? `${s.width || "—"} × ${s.depth || "—"} × ${s.height || "—"} mm` : "";
   const ot = sampleOnTime(s);
@@ -4739,7 +4735,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
         <div>
           <SectionHeading>Materials & finishes</SectionHeading>
           <DetailRow label="Main material" value={lookupName(mainMaterials, s.mainMaterialId)} /><DetailRow label="Finish / color" value={lookupName(finishes, s.finishesColorId)} /><DetailRow label="Wood surface" value={lookupName(woodSurface, s.woodSurfaceTreatmentId)} /><DetailRow label="Fabric type" value={lookupName(fabricTypes, s.fabricTypeId)} /><DetailRow label="Fabric color" value={lookupName(fabricColors, s.fabricColorId)} /><DetailRow label="Rope type" value={lookupName(ropeTypes, s.ropeTypeId)} /><DetailRow label="Rope diameter" value={s.ropeDiameter} /><DetailRow label="Rope color" value={lookupName(ropeColors, s.ropeColorId)} /><DetailRow label="Metal name" value={s.metalName} /><DetailRow label="Metal color" value={s.metalColor} /><DetailRow label="Cemboard color" value={lookupName(cemboardColors, s.cemboardColorId)} /><DetailRow label="Hardware" value={s.hardware} /><DetailRow label="Construction" value={s.construction} /><DetailRow label="Revision" value={s.currentRevision} />
-          <div style={{ marginTop: 16 }}><SampleQRInline sample={s} compact /></div>
+          <div style={{ marginTop: 16 }}><ProductQRInline sample={s} compact /></div>
         </div>
         <div>
           <SectionHeading>Production & stage</SectionHeading>
