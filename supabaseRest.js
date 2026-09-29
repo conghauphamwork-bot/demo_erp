@@ -205,14 +205,16 @@ export async function getMyProfile(userId) {
 }
 
 export async function loadWorkspace() {
-  const [customers, samples, quotes, orders, shipments, components, notes, revisions, tasks,
+  const [customers, samples, quotes, quoteItems, orders, orderItems, shipments, components, notes, revisions, tasks,
     productTypes, mainMaterials, finishes, woodSurface, fabricTypes, fabricColors, ropeTypes, ropeColors, cemboardColors,
   ] = await Promise.all([
     selectAll("customers"),
     selectAll("samples"),
-    loadJsonRecords("quote"),
-    loadJsonRecords("order"),
-    loadJsonRecords("shipment"),
+    selectAll("quotes"),
+    selectAll("quote_items"),
+    selectAll("orders"),
+    selectAll("order_items"),
+    selectAll("shipments"),
     selectAll("sample_components"),
     selectAll("sample_notes"),
     selectAll("sample_revisions"),
@@ -240,12 +242,15 @@ export async function loadWorkspace() {
     requiredComponents: componentMap[s.id] || [],
   }));
 
+  const quoteItemsByQuote = groupBy(quoteItems, "quote_id");
+  const orderItemsByOrder = groupBy(orderItems, "order_id");
+
   return {
     customers: customers.map(customerToApp),
     samples: appSamples,
-    quotes,
-    orders,
-    shipments,
+    quotes: quotes.map((r) => quoteToApp(r, quoteItemsByQuote)),
+    orders: orders.map((r) => orderToApp(r, orderItemsByOrder)),
+    shipments: shipments.map(shipmentToApp),
     materialPreps: componentRows,
     tasks: tasks.map(taskToApp),
     materialLists: {
@@ -283,6 +288,11 @@ function taskToApp(r) { return { id: r.id, name: r.name || "", type: r.type || "
 function sampleComponentsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, materialName: r.component_name || "", qty: r.qty ?? 1, startDate: r.start_date || "", dueDate: r.target_date || "", status: r.status || "Waiting", photo: r.proof_image_url || "" })); }
 function sampleNotesToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, text: r.note || "", createdAt: r.created_at || new Date().toISOString() })); }
 function sampleRevisionsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, date: r.revision_date || "", changeReason: r.change_reason || "", photo: r.photo_url || "", note: r.note || "" })); }
+function quoteItemToApp(r) { return { id: r.id, name: r.name || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
+function quoteToApp(r, itemsByQuote) { return { id: r.id, customerId: r.customer_id || "", date: r.quote_date || "", validUntil: r.valid_until || "", status: r.status || "Draft", notes: r.notes || "", items: (itemsByQuote[r.id] || []).map(quoteItemToApp) }; }
+function orderItemToApp(r) { return { id: r.id, name: r.name || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
+function orderToApp(r, itemsByOrder) { return { id: r.id, quoteId: r.quote_id || "", customerId: r.customer_id || "", orderDate: r.order_date || "", stage: r.stage || "Confirmed", notes: r.notes || "", items: (itemsByOrder[r.id] || []).map(orderItemToApp) }; }
+function shipmentToApp(r) { return { id: r.id, orderId: r.order_id || "", carrier: r.carrier || "", trackingNo: r.tracking_no || "", shipDate: r.ship_date || "", eta: r.eta || "", status: r.status || "Preparing", notes: r.notes || "" }; }
 
 function sampleToApp(r) {
   return {
@@ -316,6 +326,9 @@ export const adapters = {
     next_action: nullify(x.nextAction), stage_start_date: nullify(x.stageStartDate), stage_status: nullify(x.stageStatus), priority: nullify(x.priority), target_date: nullify(x.targetDate), completed_date: nullify(x.completedDate), overall_status: nullify(x.overallStatus), image_url: nullify(x.image), order_id: nullify(x.orderId),
     carton_length: x.cartonLength === "" ? null : x.cartonLength, carton_width: x.cartonWidth === "" ? null : x.cartonWidth, carton_height: x.cartonHeight === "" ? null : x.cartonHeight,
     net_weight: x.netWeight === "" ? null : x.netWeight, gross_weight: x.grossWeight === "" ? null : x.grossWeight, pcs_per_ctn: x.pcsPerCtn === "" ? null : x.pcsPerCtn, carton_qty: x.cartonQty === "" ? null : x.cartonQty, cbm: x.cbm === "" ? null : x.cbm,
+      quotes: (x) => ({ id: x.id, customer_id: nullify(x.customerId), quote_date: nullify(x.date), valid_until: nullify(x.validUntil), status: x.status || "Draft", notes: nullify(x.notes) }),
+  orders: (x) => ({ id: x.id, quote_id: nullify(x.quoteId), customer_id: nullify(x.customerId), order_date: nullify(x.orderDate), stage: x.stage || "Confirmed", notes: nullify(x.notes) }),
+  shipments: (x) => ({ id: x.id, order_id: nullify(x.orderId), carrier: nullify(x.carrier), tracking_no: nullify(x.trackingNo), ship_date: nullify(x.shipDate), eta: nullify(x.eta), status: x.status || "Preparing", notes: nullify(x.notes) }),
   }),
   components: (x) => ({ id: x.id, sample_id: x.sampleId, component_name: x.materialName || "", qty: x.qty ?? 1, start_date: nullify(x.startDate), target_date: nullify(x.dueDate), status: x.status || "Waiting", proof_image_url: nullify(x.photo) }),
   tasks: (x) => ({ id: x.id, name: x.name || "", type: x.type || "Daily", description: nullify(x.description), reference_person: nullify(x.referencePerson), deadline: nullify(x.deadline), status: x.status || "To Do", priority: nullify(x.priority), sample_id: nullify(x.sampleId), note: nullify(x.note), image_url: nullify(x.image) }),
@@ -333,6 +346,17 @@ export async function saveSampleChildren(sample) {
   await deleteWhere("sample_revisions", "sample_id", sample.id);
   await upsertRows("sample_notes", notes);
   await upsertRows("sample_revisions", revisions);
+}
+
+export async function saveQuoteChildren(quote) {
+  const items = (quote.items || []).map((i) => ({ id: i.id, quote_id: quote.id, name: i.name || "", qty: i.qty === "" ? null : i.qty, unit_price: i.unitPrice === "" ? null : i.unitPrice }));
+  await deleteWhere("quote_items", "quote_id", quote.id);
+  await upsertRows("quote_items", items);
+}
+export async function saveOrderChildren(order) {
+  const items = (order.items || []).map((i) => ({ id: i.id, order_id: order.id, name: i.name || "", qty: i.qty === "" ? null : i.qty, unit_price: i.unitPrice === "" ? null : i.unitPrice }));
+  await deleteWhere("order_items", "order_id", order.id);
+  await upsertRows("order_items", items);
 }
 
 export async function saveJsonRecord(recordType, record) {
