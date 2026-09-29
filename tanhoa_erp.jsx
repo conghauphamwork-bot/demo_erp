@@ -57,18 +57,18 @@ async function loadPublicSampleMaterialImages(sampleId) {
    Data persists in Supabase Postgres. Images currently use the existing app image URL/data model.
 --------------------------------------------------------- */
 
-// Tân Hòa brand theme — primary: #1E3A5F (warm beige).
+// Tân Hòa brand theme — primary: #2F6FED (warm beige).
 // Semantic status colors (success/error/info) remain distinct for usability.
 const COLORS = {
-  bg: "#F5F7FA",
+  bg: "#F4F6FC",
   panel: "#FFFFFF",
   ink: "#0F172A",
   inkSoft: "#5B6472",
-  line: "#E2E6EC",
+  line: "#E4E9F2",
   sidebar: "#FFFFFF",
   sidebarSoft: "#94A0B2",
-  wood: "#1E3A5F",
-  woodDark: "#15293F",
+  wood: "#2F6FED",
+  woodDark: "#1D4ED8",
   teal: "#0EA5A5",
   tealSoft: "#E0F5F5",
   amber: "#D97706",
@@ -216,15 +216,15 @@ function normalizeSampleWorkflowStage(stage) {
 // closer to completion. Keeping one neutral family makes the workflow feel like
 // one continuous production pipeline instead of seven unrelated categories.
 const SAMPLE_STAGE_THEME = {
-  // Tân Hòa brand rule: the primary UI hue is ALWAYS #1E3A5F.
+  // Tân Hòa brand rule: the primary UI hue is ALWAYS #2F6FED.
   // Workflow stages use grayscale variations only.
-  "Request Received":      { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
-  "Material Preparation":  { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
-  "Assembly":              { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
-  "Quality Check":         { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
-  "Customer Correction":   { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
-  "Packaging":             { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
-  "Shipping":              { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#1E3A5F", soft: "#EDF0F3" },
+  "Request Received":      { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
+  "Material Preparation":  { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
+  "Assembly":              { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
+  "Quality Check":         { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
+  "Customer Correction":   { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
+  "Packaging":             { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
+  "Shipping":              { bg: "#F9FAFB", head: "#4E637A", border: "#D8DFE6", accent: "#2F6FED", soft: "#EDF0F3" },
 };
 
 const CONSTRUCTION_OPTIONS = ["K/D", "Full Assembly"];
@@ -517,7 +517,7 @@ function Button({ children, onClick, variant = "primary", type = "button", small
     fontWeight: 600,
     fontSize: small ? 13 : 14,
     padding: small ? "6px 12px" : "9px 16px",
-    borderRadius: 10,
+    borderRadius: 11,
     cursor: disabled ? "not-allowed" : "pointer",
     border: "1px solid transparent",
     transition: "opacity .12s, transform .12s, box-shadow .12s",
@@ -527,7 +527,7 @@ function Button({ children, onClick, variant = "primary", type = "button", small
     gap: 6,
   };
   const variants = {
-    primary: { background: COLORS.wood, color: "#FFFFFF", boxShadow: "0 1px 2px rgba(0,0,0,.08)" },
+    primary: { background: COLORS.wood, color: "#FFFFFF", boxShadow: "0 4px 10px rgba(47,111,237,.25)" },
     ghost: { background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.line}` },
     subtle: { background: COLORS.bg, color: COLORS.ink, border: `1px solid ${COLORS.line}` },
     danger: { background: "transparent", color: COLORS.red, border: `1px solid ${COLORS.redSoft}` },
@@ -694,24 +694,24 @@ function TextArea(props) {
 
 function Panel({ title, action, children }) {
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,.025), 0 8px 24px rgba(39,39,39,.035)" }}>
+    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 18, overflow: "hidden", boxShadow: "0 1px 2px rgba(15,23,42,.03), 0 10px 28px rgba(47,111,237,.06)" }}>
       {(title || action) && (
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            padding: "14px 18px",
+            padding: "16px 20px",
             borderBottom: `1px solid ${COLORS.line}`,
             gap: 12,
             flexWrap: "wrap",
           }}
         >
-          <h3 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 18, fontWeight: 600 }}>{title}</h3>
+          <h3 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 17, fontWeight: 700, letterSpacing: "-.2px" }}>{title}</h3>
           {action}
         </div>
       )}
-      <div style={{ padding: 18 }}>{children}</div>
+      <div style={{ padding: 20 }}>{children}</div>
     </div>
   );
 }
@@ -721,11 +721,13 @@ function SectionHeading({ children }) {
     <div
       style={{
         fontFamily: FONT_HEAD,
-        fontSize: 14.5,
-        fontWeight: 600,
-        color: COLORS.woodDark,
+        fontSize: 11.5,
+        fontWeight: 800,
+        color: COLORS.wood,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
         borderBottom: `1px solid ${COLORS.line}`,
-        paddingBottom: 6,
+        paddingBottom: 8,
         marginTop: 4,
       }}
     >
@@ -1244,7 +1246,7 @@ function levelCan(level, module, action = "view") {
           cursor: pointer;
         }
         .kanban-icon-button:hover {
-          color: #1E3A5F; border-color: #CCD4DE; background: #F3F5F7;
+          color: #2F6FED; border-color: #CCD4DE; background: #F3F5F7;
           box-shadow: none !important;
         }
         .kanban-column-menu {
@@ -1323,7 +1325,7 @@ function levelCan(level, module, action = "view") {
           position: fixed; right: 24px; bottom: 24px; z-index: 90;
           display: inline-flex; align-items: center; gap: 8px;
           padding: 12px 16px; border-radius: 999px;
-          border: 1px solid #ADBBCB; background: #1E3A5F; color: #1E252E;
+          border: 1px solid #ADBBCB; background: #2F6FED; color: #1E252E;
           font-size: 13px; font-weight: 750; cursor: pointer;
           box-shadow: 0 10px 30px rgba(67,67,67,.18), 0 2px 8px rgba(17,17,17,.08);
         }
@@ -1340,21 +1342,21 @@ function levelCan(level, module, action = "view") {
         }
         .ai-assistant-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 18px 15px; border-bottom:1px solid #E7EBEF; }
         .ai-assistant-title { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:800; color:#171E25; }
-        .ai-assistant-title svg { color:#15293F; }
+        .ai-assistant-title svg { color:#1D4ED8; }
         .ai-assistant-subtitle { margin-top:4px; color:#59708B; font-size:11.5px; }
         .ai-close-button { width:32px; height:32px; display:grid; place-items:center; border:1px solid #DCE2E8; border-radius:9px; background:#FFFFFF; color:#4C6178; cursor:pointer; }
         .ai-assistant-body { flex:1; min-height:0; overflow:auto; padding:18px; background:#FAFBFC; }
         .ai-welcome { text-align:center; padding:24px 4px 8px; }
-        .ai-welcome-icon { width:48px; height:48px; display:grid; place-items:center; margin:0 auto 12px; border-radius:14px; background:#E4E9EE; color:#15293F; }
+        .ai-welcome-icon { width:48px; height:48px; display:grid; place-items:center; margin:0 auto 12px; border-radius:14px; background:#E4E9EE; color:#1D4ED8; }
         .ai-welcome-title { font-size:18px; font-weight:800; color:#1B2229; }
         .ai-welcome-copy { max-width:340px; margin:7px auto 18px; color:#59708B; font-size:12px; line-height:1.55; }
         .ai-suggestions { display:flex; flex-direction:column; gap:8px; text-align:left; }
         .ai-suggestions button { padding:11px 12px; border:1px solid #DAE1E8; border-radius:11px; background:#FFFFFF; color:#3A495A; font-size:12px; text-align:left; cursor:pointer; }
-        .ai-suggestions button:hover { border-color:#1E3A5F; background:#F5F7F9; box-shadow:none; }
+        .ai-suggestions button:hover { border-color:#2F6FED; background:#F5F7F9; box-shadow:none; }
         .ai-message-row { display:flex; margin-bottom:10px; }
         .ai-message-row.user { justify-content:flex-end; }
         .ai-message { max-width:90%; padding:11px 13px; border-radius:14px; background:#FFFFFF; border:1px solid #DEE4EA; color:#26303C; font-family:${FONT_BODY}; font-size:13px; line-height:1.58; white-space:normal; overflow-wrap:anywhere; }
-        .ai-message-row.user .ai-message { background:#D8DFE6; border-color:#1E3A5F; color:#222A34; white-space:pre-wrap; }
+        .ai-message-row.user .ai-message { background:#D8DFE6; border-color:#2F6FED; color:#222A34; white-space:pre-wrap; }
         .ai-markdown > :first-child { margin-top:0; }
         .ai-markdown > :last-child { margin-bottom:0; }
         .ai-markdown p { margin:0 0 12px; }
@@ -1377,9 +1379,9 @@ function levelCan(level, module, action = "view") {
         .ai-thinking { color:#68819E; font-style:italic; }
         .ai-assistant-footer { padding:12px 14px 13px; border-top:1px solid #E7EBEF; background:#FFFFFF; }
         .ai-input-wrap { display:flex; align-items:flex-end; gap:8px; padding:7px 7px 7px 10px; border:1px solid #D1D8E1; border-radius:13px; background:#FFFFFF; }
-        .ai-input-wrap:focus-within { border-color:#1E3A5F; box-shadow:0 0 0 3px rgba(30,58,95,.10); }
+        .ai-input-wrap:focus-within { border-color:#2F6FED; box-shadow:0 0 0 3px rgba(47,111,237,.10); }
         .ai-input-wrap textarea { flex:1; min-height:22px; max-height:100px; resize:none; border:0 !important; outline:0; box-shadow:none !important; padding:3px 0; background:transparent !important; font-size:12.5px; line-height:1.45; border-radius:0 !important; }
-        .ai-input-wrap button { width:32px; height:32px; flex:0 0 32px; border:0; border-radius:9px; background:#1E3A5F; color:#222B36; font-weight:800; cursor:pointer; }
+        .ai-input-wrap button { width:32px; height:32px; flex:0 0 32px; border:0; border-radius:9px; background:#2F6FED; color:#222B36; font-weight:800; cursor:pointer; }
         .ai-input-wrap button:disabled { opacity:.4; cursor:not-allowed; box-shadow:none; }
         .ai-disclaimer { margin-top:7px; color:#7C92AC; font-size:9.5px; text-align:center; }
         @media (max-width: 600px) {
@@ -1390,20 +1392,20 @@ function levelCan(level, module, action = "view") {
         }
         /* --- Modern dark/light hybrid UI system --- */
         :root { color-scheme: light; }
-        ::selection { background: rgba(30,58,95,.18); }
+        ::selection { background: rgba(47,111,237,.18); }
         .erp-sidebar nav button { transition: background .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
-        .erp-sidebar nav button:hover { color: #1E3A5F !important; background: #EEF3FA !important; border-color: transparent !important; transform: translateX(2px); }
-        .erp-sidebar nav button[style*="linear-gradient"] { box-shadow: 0 0 22px rgba(30,58,95,.12), inset 0 1px 0 rgba(255,255,255,.06); }
+        .erp-sidebar nav button:hover { color: #2F6FED !important; background: #EEF3FA !important; border-color: transparent !important; transform: translateX(2px); }
+        .erp-sidebar nav button[style*="linear-gradient"] { box-shadow: 0 0 22px rgba(47,111,237,.12), inset 0 1px 0 rgba(255,255,255,.06); }
         .erp-sidebar > div:first-child { letter-spacing: -.35px; }
         button { transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease, opacity .16s ease; }
         button:not(:disabled):hover { box-shadow: 0 5px 16px rgba(17,17,17,.07); }
         button:not(:disabled):active { transform: translateY(1px); }
         input, select, textarea { border-color: #E2E7EC !important; border-radius: 12px !important; background: #FFFFFF !important; }
-        input:focus, select:focus, textarea:focus { border-color: #1E3A5F !important; box-shadow: 0 0 0 3px rgba(30,58,95,.10) !important; }
-        div[style*="border-radius: 12px"], div[style*="border-radius: 14px"], div[style*="border-radius: 16px"], div[style*="border-radius: 18px"] { border-radius: 14px !important; }
+        input:focus, select:focus, textarea:focus { border-color: #2F6FED !important; box-shadow: 0 0 0 3px rgba(47,111,237,.10) !important; }
+        div[style*="border-radius: 12px"], div[style*="border-radius: 14px"], div[style*="border-radius: 16px"], div[style*="border-radius: 18px"] { border-radius: 18px !important; }
         table { border-color: #E2E7EC; }
         th { font-weight: 650 !important; color: #425468 !important; }
-        .erp-content h1 { letter-spacing: -.45px; }
+        .erp-content h1 { letter-spacing: -.3px; font-weight: 800; text-transform: uppercase; }
         .erp-content h2, .erp-content h3 { letter-spacing: -.2px; }
         @media (max-width: 560px) {
           .erp-content { padding: 12px; }
@@ -1427,7 +1429,7 @@ function levelCan(level, module, action = "view") {
           return groups.map(([group, items]) => items.length ? <div key={group} style={{ marginTop: 18 }}>
             <div style={{ padding: "0 12px 8px", fontSize: 10.5, fontWeight: 800, color: "#69829F", letterSpacing: 1.4 }}>{group}</div>
             <div style={{ display: "grid", gap: 2 }}>
-              {items.map((n) => { const Icon=n.icon; return <button key={n.key} onClick={() => n.onClick ? n.onClick() : setView(n.key)} style={{ width: "100%", textAlign: "left", background: view === n.key ? "#EAF1FB" : "transparent", color: view === n.key ? COLORS.wood : "#5B6472", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 13.5, fontWeight: view === n.key ? 750 : 550, cursor: "pointer", fontFamily: FONT_BODY, display: "flex", alignItems: "center", gap: 10 }}><Icon size={17} strokeWidth={2} />{n.label}</button>; })}
+              {items.map((n) => { const Icon=n.icon; return <button key={n.key} onClick={() => n.onClick ? n.onClick() : setView(n.key)} style={{ width: "100%", textAlign: "left", background: view === n.key ? "#EAF1FB" : "transparent", color: view === n.key ? COLORS.wood : "#5B6472", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 13.5, fontWeight: view === n.key ? 750 : 550, cursor: "pointer", fontFamily: FONT_BODY, display: "flex", alignItems: "center", gap: 10 }}><span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: view === n.key ? "#DCE8FF" : "#EEF1F6", color: view === n.key ? COLORS.wood : "#8A93A3" }}><Icon size={15} strokeWidth={2.2} /></span>{n.label}</button>; })}
             </div>
           </div> : null);
         })()}
@@ -3044,7 +3046,7 @@ function SampleExportModal({ samples, customers, productTypes, materialLists, ma
             <Panel title="Columns & filters" action={<div style={{ display: "flex", gap: 6 }}><Button small variant="subtle" onClick={selectAll}>Select all</Button><Button small variant="ghost" onClick={clearAll}>Clear</Button></div>}>
               <Input value={fieldSearch} onChange={(e) => setFieldSearch(e.target.value)} placeholder="Search fields…" style={{ marginBottom: 10 }} />
               <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 9, background: "#EEF1F4", color: COLORS.inkSoft, fontSize: 11.5 }}>Tip: select <b>Image (embedded)</b> for the product photo or <b>QR Code</b> to place a scannable QR image directly into the Excel file.</div>
-              <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F0F3F6", border: `1px solid ${COLORS.orange || "#1E3A5F"}` }}>
+              <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F0F3F6", border: `1px solid ${COLORS.orange || "#2F6FED"}` }}>
                 {(() => { const field = fieldMap.get("qrCode"); const checked = selectedKeys.includes("qrCode"); return <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={checked} onChange={() => toggleField("qrCode")} />
                   <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this product's public passport.</div></div>
@@ -4149,10 +4151,10 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
           margin: "0 2px 12px", padding: "9px 12px", borderRadius: 13,
-          background: "#F8F9FA", border: "1px solid #DAE1E8", boxShadow: "0 4px 14px rgba(30,58,95,.06)"
+          background: "#F8F9FA", border: "1px solid #DAE1E8", boxShadow: "0 4px 14px rgba(47,111,237,.06)"
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#1E3A5F", color: "#FFFFFF", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#2F6FED", color: "#FFFFFF", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: "#1B2229" }}>products selected</div>
               <div style={{ fontSize: 11, color: "#59708B" }}>Drag any selected card to another column to move them together.</div>
@@ -4185,9 +4187,9 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               className="sample-kanban-column"
               style={{
                 background: "#FFFFFF",
-                border: `1px solid ${isOver ? "#1E3A5F" : "#D8DFE6"}`,
+                border: `1px solid ${isOver ? "#2F6FED" : "#D8DFE6"}`,
                 borderRadius: 14, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
-                boxShadow: isOver ? "0 0 0 2px rgba(30,58,95,.22), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
+                boxShadow: isOver ? "0 0 0 2px rgba(47,111,237,.22), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
               }}
             >
               <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #E2E7EC", display: "flex", flexDirection: "column", gap: 10, background: "#EDF0F3" }}>
@@ -4202,7 +4204,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
                   <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#475A6F", background: "#F4F6F8", borderRadius: 999, border: "1px solid #DDE3E9", fontWeight: 800 }}>{cards.length}</span>
                 </div>
                 <div style={{ height: 3, borderRadius: 99, background: "#E4E9EE", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#1E3A5F" : "#C1CBD7" }} />
+                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#2F6FED" : "#C1CBD7" }} />
                 </div>
               </div>
 
@@ -4277,7 +4279,7 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
 
   if (quickEditing) {
     return (
-      <div className="sample-kanban-card" style={{ position: "relative", background: "#FFFFFF", border: `1px solid #1E3A5F`, borderRadius: 14, padding: 12, cursor: "default", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0, boxShadow: "0 0 0 2px rgba(30,58,95,.16), 0 8px 22px rgba(17,17,17,.05)" }}>
+      <div className="sample-kanban-card" style={{ position: "relative", background: "#FFFFFF", border: `1px solid #2F6FED`, borderRadius: 14, padding: 12, cursor: "default", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0, boxShadow: "0 0 0 2px rgba(47,111,237,.16), 0 8px 22px rgba(17,17,17,.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374555" }}>Quick edit product</div>
           <span style={{ fontSize: 10.5, color: "#627C9A", fontWeight: 700 }}>{s.id}</span>
@@ -4290,7 +4292,7 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
         <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#4E637A" }}>Next action<input value={draft.nextAction} onChange={(e) => setDraft({ ...draft, nextAction: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #CFD7E1", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
         <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#4E637A" }}>Target date<input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #CFD7E1", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
         <div style={{ display: "flex", gap: 7, marginTop: 2 }}>
-          <button type="button" onClick={saveQuickEdit} style={{ flex: 1, border: "1px solid #1E3A5F", background: "#1E3A5F", color: "#FFFFFF", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Save</button>
+          <button type="button" onClick={saveQuickEdit} style={{ flex: 1, border: "1px solid #2F6FED", background: "#2F6FED", color: "#FFFFFF", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Save</button>
           <button type="button" onClick={cancelQuickEdit} style={{ flex: 1, border: "1px solid #CFD7E1", background: "#FFFFFF", color: "#45586D", borderRadius: 9, padding: "8px 10px", fontWeight: 750, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Cancel</button>
         </div>
       </div>
@@ -4313,12 +4315,12 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
         flexDirection: "column",
         flexShrink: 0,
         gap: 9,
-        boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(30,58,95,.10)` : "0 2px 8px rgba(17,17,17,.035)",
+        boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(47,111,237,.10)` : "0 2px 8px rgba(17,17,17,.035)",
         overflow: "hidden",
         opacity: isDragging ? 0.58 : 1,
       }}
     >
-      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#1E3A5F" : "#E0E6EC" }} />
+      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#2F6FED" : "#E0E6EC" }} />
       <button
         type="button"
         aria-label={selected ? `Deselect ${s.name || s.id}` : `Select ${s.name || s.id}`}
@@ -4930,10 +4932,10 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
     if (e.overdue) return { bg: "#FEE2E2", border: "#FCA5A5", text: "#B91C1C", accent: "#DC2626", label: "OVERDUE" };
     if (e.status === "Done" || e.status === "Completed") return { bg: "#DCFCE7", border: "#86EFAC", text: "#15803D", accent: "#16A34A", label: "DONE" };
     if (e.type === "material") return { bg: "#FEF3C7", border: "#FCD34D", text: "#B45309", accent: "#D97706", label: "MATERIAL" };
-    if (e.type === "sample") return { bg: "#EAF1FB", border: "#BBD3EE", text: "#1E3A5F", accent: "#1E3A5F", label: "PRODUCT" };
+    if (e.type === "sample") return { bg: "#EAF1FB", border: "#BBD3EE", text: "#2F6FED", accent: "#2F6FED", label: "PRODUCT" };
     if (e.taskType === "Daily") return { bg: "#F1F3F6", border: "#D7DCE3", text: "#5B6472", accent: "#8A93A3", label: "DAILY" };
     if (e.taskType === "Product Test") return { bg: "#F3E8FF", border: "#D8B4FE", text: "#7E22CE", accent: "#9333EA", label: "PRODUCT TEST" };
-    return { bg: "#EAF1FB", border: "#BBD3EE", text: "#1E3A5F", accent: "#1E3A5F", label: "FOLLOW-UP" };
+    return { bg: "#EAF1FB", border: "#BBD3EE", text: "#2F6FED", accent: "#2F6FED", label: "FOLLOW-UP" };
   };
 
   const persistEventDate = (event, newDate) => {
@@ -5104,7 +5106,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       </div>
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: COLORS.inkSoft }}>
-        {[['#1E3A5F','Product'],['#D97706','Material'],['#5B6472','Daily'],['#9333EA','Product Test'],['#DC2626','Overdue'],['#16A34A','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
+        {[['#2F6FED','Product'],['#D97706','Material'],['#5B6472','Daily'],['#9333EA','Product Test'],['#DC2626','Overdue'],['#16A34A','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
       </div>
 
       {view === "week" ? (
