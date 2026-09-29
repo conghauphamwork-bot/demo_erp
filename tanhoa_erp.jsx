@@ -53,30 +53,36 @@ async function loadPublicSampleMaterialImages(sampleId) {
 
 /* ---------------------------------------------------------
    TÂN HÒA OUTDOOR FURNITURE — SALES ERP
-   Customers → Quotes → Orders → Products → Production → Shipping
+   Customers → Quotes → Orders → Samples → Production → Shipping
    Data persists in Supabase Postgres. Images currently use the existing app image URL/data model.
 --------------------------------------------------------- */
 
-// Tân Hòa brand theme — primary: #DCC6A9 (warm beige).
-// Semantic status colors (success/error/info) remain distinct for usability.
+// Tân Hòa brand theme — primary: #B9722E (warm teak/rattan).
+// Semantic status colors (success/error/info/warning) are distinct hues so
+// stage, priority and readiness states read at a glance instead of blending
+// into one flat gray (v55 fix — see UI_RECOLOR_NOTES.md).
 const COLORS = {
-  bg: "#F6F7F9",
+  bg: "#F7F4EF",
   panel: "#FFFFFF",
-  ink: "#111111",
-  inkSoft: "#666666",
-  line: "#E5E7EB",
-  sidebar: "linear-gradient(145deg, #1A1918 0%, #211D1A 58%, #3D2218 100%)",
-  sidebarSoft: "#888888",
-  wood: "#DCC6A9",
-  woodDark: "#9E876B",
-  teal: "#5E6B63",
-  tealSoft: "#EEF1EF",
-  amber: "#C9B395",
-  amberSoft: "#F4EEE5",
-  red: "#D94B4B",
-  redSoft: "#FDEBEC",
-  green: "#4C9A68",
-  greenSoft: "#E8F5EC",
+  ink: "#221B14",
+  inkSoft: "#6B6259",
+  line: "#E7DFD4",
+  sidebar: "linear-gradient(165deg, #201A14 0%, #2E2117 55%, #4A2F1A 100%)",
+  sidebarSoft: "#C9B8A0",
+  wood: "#B9722E",
+  woodDark: "#8C551F",
+  teal: "#2E8B82",
+  tealSoft: "#E2F3F1",
+  amber: "#D98F1F",
+  amberSoft: "#FCEEDA",
+  red: "#C84B3C",
+  redSoft: "#FBEAE7",
+  green: "#3E9150",
+  greenSoft: "#E8F5EA",
+  slate: "#4F6E92",
+  slateSoft: "#E4EBF2",
+  violet: "#7B5EA8",
+  violetSoft: "#ECE3F5",
 };
 
 // Apple-style system font stack: uses San Francisco on Apple devices and
@@ -182,7 +188,7 @@ const ORDER_STAGES = [
   "Completed",
 ];
 
-const SAMPLE_STAGE_GROUPS = ["Request", "Production Preparation", "Sample Production Preparation", "Sample Production", "Quality", "Complete"];
+const SAMPLE_STAGE_GROUPS = ["Request", "Production Preparation", "Product Production Preparation", "Product Production", "Quality", "Complete"];
 
 // The user-facing sample workflow. Keep this list in process order so the
 // Kanban, stage selectors, and filters all use the same production flow.
@@ -212,19 +218,16 @@ function normalizeSampleWorkflowStage(stage) {
   return LEGACY_SAMPLE_STAGE_MAP[value] || (SAMPLE_STAGES.includes(value) ? value : "Request Received");
 }
 
-// Single-hue progression: the board becomes warmer/darker as a product moves
-// closer to completion. Keeping one orange family makes the workflow feel like
-// one continuous production pipeline instead of seven unrelated categories.
+// Each workflow stage gets its own hue so the Kanban board reads as seven
+// distinct steps at a glance (v55 fix — was one gray repeated seven times).
 const SAMPLE_STAGE_THEME = {
-  // Tân Hòa brand rule: the primary UI hue is ALWAYS #DCC6A9.
-  // Workflow stages use neutral/beige variations only; no orange/pink/green stage colors.
-  "Request Received":      { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
-  "Material Preparation":  { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
-  "Assembly":              { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
-  "Quality Check":         { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
-  "Customer Correction":   { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
-  "Packaging":             { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
-  "Shipping":              { bg: "#FBFAF8", head: "#6F6254", border: "#E6DED3", accent: "#DCC6A9", soft: "#F5EFE7" },
+  "Request Received":      { bg: "#F4F7FA", head: "#35516F", border: "#C9D7E3", accent: "#4F6E92", soft: "#E4EBF2" },
+  "Material Preparation":  { bg: "#FDF8EE", head: "#96650F", border: "#EFD9AD", accent: "#D98F1F", soft: "#FCEEDA" },
+  "Assembly":               { bg: "#FBF4EC", head: "#7A4E1E", border: "#E7CBA9", accent: "#B9722E", soft: "#F5E7D5" },
+  "Quality Check":          { bg: "#F6F2FA", head: "#56417A", border: "#DCCCEC", accent: "#7B5EA8", soft: "#ECE3F5" },
+  "Customer Correction":    { bg: "#FDF1F0", head: "#96352A", border: "#F0C6C0", accent: "#C84B3C", soft: "#FBEAE7" },
+  "Packaging":              { bg: "#EFF8F7", head: "#1F6D65", border: "#BEDEDA", accent: "#2E8B82", soft: "#E2F3F1" },
+  "Shipping":               { bg: "#EFF8F0", head: "#285E33", border: "#C2E1C7", accent: "#3E9150", soft: "#E8F5EA" },
 };
 
 const CONSTRUCTION_OPTIONS = ["K/D", "Full Assembly"];
@@ -448,7 +451,7 @@ function sampleOnTime(s) {
 function Badge({ children, tone = "neutral" }) {
   const tones = {
     neutral: { bg: COLORS.line, fg: COLORS.inkSoft },
-    wood: { bg: "#EFDFCF", fg: COLORS.woodDark },
+    wood: { bg: "#E8E3D9", fg: COLORS.woodDark },
     teal: { bg: COLORS.tealSoft, fg: COLORS.teal },
     amber: { bg: COLORS.amberSoft, fg: COLORS.amber },
     red: { bg: COLORS.redSoft, fg: COLORS.red },
@@ -527,7 +530,7 @@ function Button({ children, onClick, variant = "primary", type = "button", small
     gap: 6,
   };
   const variants = {
-    primary: { background: COLORS.wood, color: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,.08)" },
+    primary: { background: COLORS.wood, color: "#FFFFFF", boxShadow: "0 1px 2px rgba(0,0,0,.08)" },
     ghost: { background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.line}` },
     subtle: { background: COLORS.bg, color: COLORS.ink, border: `1px solid ${COLORS.line}` },
     danger: { background: "transparent", color: COLORS.red, border: `1px solid ${COLORS.redSoft}` },
@@ -561,7 +564,7 @@ const inputStyle = {
   padding: "9px 11px",
   borderRadius: 10,
   border: `1px solid ${COLORS.line}`,
-  background: "#fff",
+  background: "#FFFFFF",
   color: COLORS.ink,
   outline: "none",
   width: "100%",
@@ -655,7 +658,7 @@ function MaterialPicker({ label, value, onChange, options, onAddNew, onImport, s
       {showReferenceImage ? (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 112px", gap: 10, alignItems: "stretch" }}>
           <ComboSelect value={value} onChange={onChange} options={options} onAddNew={onAddNew} showAddNew={false} />
-          <div style={{ minHeight: 42, border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#FAFAF8", padding: 5, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }} title={referenceImage ? `Reference image: ${selected?.code || selected?.name || "selected color"}` : "No reference image"}>
+          <div style={{ minHeight: 42, border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#FFFBF1", padding: 5, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }} title={referenceImage ? `Reference image: ${selected?.code || selected?.name || "selected color"}` : "No reference image"}>
             {referenceImage ? (
               <img src={referenceImage} alt={`${selected?.code || selected?.name || label} reference`} style={{ width: "100%", height: 66, objectFit: "cover", borderRadius: 6, display: "block" }} />
             ) : (
@@ -678,8 +681,8 @@ function MaterialPicker({ label, value, onChange, options, onAddNew, onImport, s
           </>
         ) : (
           <>
-            <button type="button" onClick={() => setAdding(true)} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", color: COLORS.woodDark, borderRadius: 7, padding: "4px 8px", fontSize: 10.5, fontWeight: 750, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}><Plus size={11} /> Add new</button>
-            <button type="button" onClick={onImport} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", color: COLORS.woodDark, borderRadius: 7, padding: "4px 8px", fontSize: 10.5, fontWeight: 750, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}><Upload size={11} /> Import</button>
+            <button type="button" onClick={() => setAdding(true)} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", color: COLORS.woodDark, borderRadius: 7, padding: "4px 8px", fontSize: 10.5, fontWeight: 750, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}><Plus size={11} /> Add new</button>
+            <button type="button" onClick={onImport} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", color: COLORS.woodDark, borderRadius: 7, padding: "4px 8px", fontSize: 10.5, fontWeight: 750, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}><Upload size={11} /> Import</button>
           </>
         )}
       </div>
@@ -694,7 +697,7 @@ function TextArea(props) {
 
 function Panel({ title, action, children }) {
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,.025), 0 8px 24px rgba(35,42,38,.035)" }}>
+    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,.025), 0 8px 24px rgba(39,39,39,.035)" }}>
       {(title || action) && (
         <div
           style={{
@@ -836,14 +839,14 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ fontFamily: FONT_BODY, padding: 24, background: "#fff", border: `1px solid ${COLORS.redSoft}`, borderRadius: 12, maxWidth: 640 }}>
+        <div style={{ fontFamily: FONT_BODY, padding: 24, background: "#FFFFFF", border: `1px solid ${COLORS.redSoft}`, borderRadius: 12, maxWidth: 640 }}>
           <div style={{ fontWeight: 700, color: COLORS.red, marginBottom: 8, fontSize: 16 }}>Something went wrong while saving or rendering</div>
           <div style={{ fontSize: 13, color: COLORS.inkSoft, marginBottom: 14, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
             {String((this.state.error && this.state.error.message) || this.state.error)}
           </div>
           <button
             onClick={() => this.setState({ error: null })}
-            style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.wood, color: "#fff", cursor: "pointer", fontWeight: 600 }}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.wood, color: "#FFFFFF", cursor: "pointer", fontWeight: 600 }}
           >
             Try again
           </button>
@@ -932,7 +935,7 @@ function LoginScreen({ onLogin, initialError = "" }) {
         <label style={{ display: "block", marginTop: 14, fontSize: 12, fontWeight: 700 }}>Password</label>
         <input value={password} onChange={e => setPassword(e.target.value)} type="password" autoComplete="current-password" required style={{ width: "100%", marginTop: 7, padding: "11px 12px" }} />
         {error && <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: COLORS.redSoft, color: COLORS.red, fontSize: 12.5 }}>{error}</div>}
-        <button type="submit" disabled={busy} style={{ width: "100%", marginTop: 20, padding: "12px 14px", border: 0, borderRadius: 12, background: COLORS.wood, color: "#332B23", fontWeight: 800, cursor: busy ? "wait" : "pointer" }}>{busy ? "Signing in…" : "Sign In"}</button>
+        <button type="submit" disabled={busy} style={{ width: "100%", marginTop: 20, padding: "12px 14px", border: 0, borderRadius: 12, background: COLORS.wood, color: "#322D23", fontWeight: 800, cursor: busy ? "wait" : "pointer" }}>{busy ? "Signing in…" : "Sign In"}</button>
       </form>
     </div>
   );
@@ -990,7 +993,7 @@ function levelCan(level, module, action = "view") {
           if (!data) setPublicSampleError("Product not found or no longer available.");
           else setPublicSample(data);
         } catch (err) {
-          console.error("Public product load failed", err);
+          console.error("Public sample load failed", err);
           setPublicSampleError("Could not load this product. Please check the QR link or contact Tân Hòa.");
         } finally {
           setLoaded(true);
@@ -1054,7 +1057,7 @@ function levelCan(level, module, action = "view") {
     materialPreps: (next) => {
       // sample_components is the source of truth for individual material status.
       // Keep the local Sample view synchronized as well, and persist the linked
-      // Product stage status when every material for that Product is Done.
+      // Sample stage status when every material for that Sample is Done.
       setMaterialPreps(next);
       saveCollection("sample_components", materialPreps, next, adapters.components).catch((e) => alert("Material progress save failed: " + e.message));
 
@@ -1083,7 +1086,7 @@ function levelCan(level, module, action = "view") {
           };
         });
 
-        // Persist Product rows whose material-derived state changed. This writes
+        // Persist Sample rows whose material-derived state changed. This writes
         // stage_status back to public.samples; requiredComponents is intentionally
         // kept as local UI state because the normalized material rows live in
         // public.sample_components.
@@ -1168,7 +1171,7 @@ function levelCan(level, module, action = "view") {
     if (publicSampleError) {
       return <PublicSampleError message={publicSampleError} />;
     }
-    return <ProductQuickViewPublic data={publicSample} />;
+    return <SampleQuickViewPublic data={publicSample} />;
   }
 
   const NAV = [
@@ -1191,7 +1194,7 @@ function levelCan(level, module, action = "view") {
         body { background: ${COLORS.bg}; color: ${COLORS.ink}; font-family: ${FONT_BODY}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
         button, input, select, textarea { font-family: inherit; }
         .erp-shell { min-height: 100vh; width: 100%; display: flex; overflow: hidden; }
-        .erp-sidebar { width: 236px; min-height: 100vh; flex: 0 0 236px; background: ${COLORS.sidebar}; color: #fff; padding: 24px 14px; border-right: 1px solid rgba(255,255,255,.06); box-shadow: 10px 0 30px rgba(17,17,17,.06); }
+        .erp-sidebar { width: 236px; min-height: 100vh; flex: 0 0 236px; background: ${COLORS.sidebar}; color: #FFFFFF; padding: 24px 14px; border-right: 1px solid rgba(255,255,255,.06); box-shadow: 10px 0 30px rgba(17,17,17,.06); }
         .erp-content { flex: 1 1 auto; min-width: 0; min-height: 100vh; height: 100vh; overflow: auto; padding: clamp(20px, 2.4vw, 34px); background: ${COLORS.bg}; }
         .erp-page { width: 100%; max-width: 1680px; margin: 0 auto; }
         @media (max-width: 1100px) { .erp-sidebar { width: 210px !important; flex-basis: 210px !important; } }
@@ -1207,11 +1210,11 @@ function levelCan(level, module, action = "view") {
           padding: 2px 4px 18px 2px;
           scroll-snap-type: x proximity;
           scrollbar-width: auto;
-          scrollbar-color: #B9BDC3 transparent;
+          scrollbar-color: #C2BDB3 transparent;
         }
         .sample-kanban-board::-webkit-scrollbar { height: 10px; }
-        .sample-kanban-board::-webkit-scrollbar-track { background: #EEF0F2; border-radius: 99px; }
-        .sample-kanban-board::-webkit-scrollbar-thumb { background: #B9BDC3; border-radius: 99px; }
+        .sample-kanban-board::-webkit-scrollbar-track { background: #F6F1E7; border-radius: 99px; }
+        .sample-kanban-board::-webkit-scrollbar-thumb { background: #C2BDB3; border-radius: 99px; }
         .sample-kanban-column {
           min-width: 390px !important;
           width: 420px !important;
@@ -1220,7 +1223,7 @@ function levelCan(level, module, action = "view") {
           max-height: calc(100vh - 250px) !important;
           scroll-snap-align: start;
           background: #FFFFFF !important;
-          border: 1px solid #E3DED7 !important;
+          border: 1px solid #E5E0D6 !important;
           box-shadow: 0 2px 8px rgba(17,17,17,.035) !important;
         }
         .sample-kanban-column:hover { box-shadow: 0 5px 16px rgba(17,17,17,.06) !important; }
@@ -1235,25 +1238,25 @@ function levelCan(level, module, action = "view") {
         .sample-kanban-card:hover {
           transform: translateY(-1px);
           box-shadow: 0 8px 20px rgba(17,17,17,.07) !important;
-          border-color: #D5D9DE !important;
+          border-color: #DED9CF !important;
         }
         .kanban-icon-button {
           width: 30px; height: 30px; padding: 0; border-radius: 8px;
-          border: 1px solid #E1E4E8; background: #fff; color: #68707A;
+          border: 1px solid #EAE5DB; background: #FFFFFF; color: #757066;
           display: inline-flex; align-items: center; justify-content: center;
           cursor: pointer;
         }
         .kanban-icon-button:hover {
-          color: #DCC6A9; border-color: #E2D3BF; background: #F8F4EE;
+          color: #B9722E; border-color: #E7CBA9; background: #FBF4EC;
           box-shadow: none !important;
         }
         .kanban-column-menu {
           width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
-          border: 1px solid #E2E5E8; border-radius: 8px; background: #fff; color: #737A82;
+          border: 1px solid #EAE5DB; border-radius: 8px; background: #FFFFFF; color: #7F7A70;
         }
         .sample-kanban-card select {
           min-height: 31px;
-          border-color: #E4E7EB !important;
+          border-color: #EDE8DE !important;
           background: #FFFFFF !important;
         }
         .sample-kanban-column-body {
@@ -1274,7 +1277,7 @@ function levelCan(level, module, action = "view") {
         .sample-kanban-card .kanban-meta {
           font-size: 10px;
           line-height: 1.35;
-          color: #73777D;
+          color: #7C776D;
         }
         .sample-kanban-card .kanban-erp-code {
           font-size: 10px;
@@ -1323,65 +1326,65 @@ function levelCan(level, module, action = "view") {
           position: fixed; right: 24px; bottom: 24px; z-index: 90;
           display: inline-flex; align-items: center; gap: 8px;
           padding: 12px 16px; border-radius: 999px;
-          border: 1px solid #CDB99D; background: #DCC6A9; color: #2B251F;
+          border: 1px solid #8C551F; background: #B9722E; color: #FFFFFF;
           font-size: 13px; font-weight: 750; cursor: pointer;
-          box-shadow: 0 10px 30px rgba(80,65,45,.18), 0 2px 8px rgba(17,17,17,.08);
+          box-shadow: 0 10px 30px rgba(67,67,67,.18), 0 2px 8px rgba(17,17,17,.08);
         }
-        .floating-ai-button:hover { background: #CDB494; transform: translateY(-1px); box-shadow: 0 14px 34px rgba(80,65,45,.22); }
+        .floating-ai-button:hover { background: #8C551F; transform: translateY(-1px); box-shadow: 0 14px 34px rgba(140,85,31,.28); }
         .ai-assistant-overlay {
           position: fixed; inset: 0; z-index: 100; display: flex; justify-content: flex-end; align-items: flex-end;
-          padding: 24px; background: rgba(20,18,16,.18); backdrop-filter: blur(2px);
+          padding: 24px; background: rgba(18,18,18,.18); backdrop-filter: blur(2px);
         }
         .ai-assistant-panel {
           width: min(440px, calc(100vw - 32px)); height: min(690px, calc(100vh - 48px));
           display: flex; flex-direction: column; overflow: hidden;
-          background: #fff; border: 1px solid #E4DED6; border-radius: 18px;
-          box-shadow: 0 24px 70px rgba(35,28,20,.20);
+          background: #FFFFFF; border: 1px solid #E5E0D6; border-radius: 18px;
+          box-shadow: 0 24px 70px rgba(29,29,29,.20);
         }
-        .ai-assistant-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 18px 15px; border-bottom:1px solid #EEEAE5; }
-        .ai-assistant-title { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:800; color:#201D1A; }
-        .ai-assistant-title svg { color:#9E876B; }
-        .ai-assistant-subtitle { margin-top:4px; color:#77716A; font-size:11.5px; }
-        .ai-close-button { width:32px; height:32px; display:grid; place-items:center; border:1px solid #E5E1DB; border-radius:9px; background:#fff; color:#67615B; cursor:pointer; }
-        .ai-assistant-body { flex:1; min-height:0; overflow:auto; padding:18px; background:#FCFBF9; }
+        .ai-assistant-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 18px 15px; border-bottom:1px solid #F1ECE2; }
+        .ai-assistant-title { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:800; color:#241F15; }
+        .ai-assistant-title svg { color:#918C82; }
+        .ai-assistant-subtitle { margin-top:4px; color:#787369; font-size:11.5px; }
+        .ai-close-button { width:32px; height:32px; display:grid; place-items:center; border:1px solid #E8E3D9; border-radius:9px; background:#FFFFFF; color:#686359; cursor:pointer; }
+        .ai-assistant-body { flex:1; min-height:0; overflow:auto; padding:18px; background:#FFFCF2; }
         .ai-welcome { text-align:center; padding:24px 4px 8px; }
-        .ai-welcome-icon { width:48px; height:48px; display:grid; place-items:center; margin:0 auto 12px; border-radius:14px; background:#F1E8DC; color:#9E876B; }
-        .ai-welcome-title { font-size:18px; font-weight:800; color:#24211E; }
-        .ai-welcome-copy { max-width:340px; margin:7px auto 18px; color:#77716A; font-size:12px; line-height:1.55; }
+        .ai-welcome-icon { width:48px; height:48px; display:grid; place-items:center; margin:0 auto 12px; border-radius:14px; background:#EFEAE0; color:#918C82; }
+        .ai-welcome-title { font-size:18px; font-weight:800; color:#282319; }
+        .ai-welcome-copy { max-width:340px; margin:7px auto 18px; color:#787369; font-size:12px; line-height:1.55; }
         .ai-suggestions { display:flex; flex-direction:column; gap:8px; text-align:left; }
-        .ai-suggestions button { padding:11px 12px; border:1px solid #E6E0D8; border-radius:11px; background:#fff; color:#4F4943; font-size:12px; text-align:left; cursor:pointer; }
-        .ai-suggestions button:hover { border-color:#DCC6A9; background:#FAF7F3; box-shadow:none; }
+        .ai-suggestions button { padding:11px 12px; border:1px solid #E7E2D8; border-radius:11px; background:#FFFFFF; color:#504B41; font-size:12px; text-align:left; cursor:pointer; }
+        .ai-suggestions button:hover { border-color:#B9722E; background:#FBF4EC; box-shadow:none; }
         .ai-message-row { display:flex; margin-bottom:10px; }
         .ai-message-row.user { justify-content:flex-end; }
-        .ai-message { max-width:90%; padding:11px 13px; border-radius:14px; background:#fff; border:1px solid #E8E3DD; color:#34302C; font-family:${FONT_BODY}; font-size:13px; line-height:1.58; white-space:normal; overflow-wrap:anywhere; }
-        .ai-message-row.user .ai-message { background:#EADDCB; border-color:#DCC6A9; color:#302A24; white-space:pre-wrap; }
+        .ai-message { max-width:90%; padding:11px 13px; border-radius:14px; background:#FFFFFF; border:1px solid #EAE5DB; color:#373228; font-family:${FONT_BODY}; font-size:13px; line-height:1.58; white-space:normal; overflow-wrap:anywhere; }
+        .ai-message-row.user .ai-message { background:#F5E7D5; border-color:#E7CBA9; color:#3D2A16; white-space:pre-wrap; }
         .ai-markdown > :first-child { margin-top:0; }
         .ai-markdown > :last-child { margin-bottom:0; }
         .ai-markdown p { margin:0 0 12px; }
-        .ai-markdown strong { font-weight:750; color:#24211E; }
+        .ai-markdown strong { font-weight:750; color:#282319; }
         .ai-markdown em { font-style:italic; }
-        .ai-markdown h3, .ai-markdown h4 { margin:0 0 9px; font-weight:750; color:#24211E; line-height:1.3; }
+        .ai-markdown h3, .ai-markdown h4 { margin:0 0 9px; font-weight:750; color:#282319; line-height:1.3; }
         .ai-markdown h3 { font-size:15px; }
         .ai-markdown h4 { font-size:14px; }
         .ai-markdown ul, .ai-markdown ol { margin:0 0 12px; padding-left:21px; }
         .ai-markdown li { margin:0 0 7px; padding-left:2px; }
         .ai-markdown li:last-child { margin-bottom:0; }
-        .ai-markdown code { padding:2px 5px; border:1px solid #E7E0D7; border-radius:5px; background:#F7F3EE; color:#695845; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em; }
-        .ai-markdown hr { border:0; border-top:1px solid #E9E3DC; margin:13px 0; }
-        .ai-md-table-wrap { width:100%; overflow-x:auto; margin:4px 0 13px; border:1px solid #E7E1DA; border-radius:9px; }
+        .ai-markdown code { padding:2px 5px; border:1px solid #E7E2D8; border-radius:5px; background:#FAF5EB; color:#615C52; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em; }
+        .ai-markdown hr { border:0; border-top:1px solid #EAE5DB; margin:13px 0; }
+        .ai-md-table-wrap { width:100%; overflow-x:auto; margin:4px 0 13px; border:1px solid #E8E3D9; border-radius:9px; }
         .ai-md-table { width:100%; border-collapse:collapse; font-size:12px; min-width:300px; }
-        .ai-md-table th, .ai-md-table td { padding:7px 8px; border-bottom:1px solid #EEEAE5; text-align:left; vertical-align:top; }
-        .ai-md-table th { background:#F8F5F1; font-weight:700; color:#5B5148; }
+        .ai-md-table th, .ai-md-table td { padding:7px 8px; border-bottom:1px solid #F1ECE2; text-align:left; vertical-align:top; }
+        .ai-md-table th { background:#FBF6EC; font-weight:700; color:#59544A; }
         .ai-md-table tr:last-child td { border-bottom:0; }
-        .ai-message.error { background:#FFF4F3; border-color:#F1C8C4; color:#B33D34; }
-        .ai-thinking { color:#8A8178; font-style:italic; }
-        .ai-assistant-footer { padding:12px 14px 13px; border-top:1px solid #EEEAE5; background:#fff; }
-        .ai-input-wrap { display:flex; align-items:flex-end; gap:8px; padding:7px 7px 7px 10px; border:1px solid #DED8D0; border-radius:13px; background:#fff; }
-        .ai-input-wrap:focus-within { border-color:#B79F80; box-shadow:0 0 0 3px rgba(183,159,128,.10); }
+        .ai-message.error { background:#FDF8EE; border-color:#DAD5CB; color:#656056; }
+        .ai-thinking { color:#89847A; font-style:italic; }
+        .ai-assistant-footer { padding:12px 14px 13px; border-top:1px solid #F1ECE2; background:#FFFFFF; }
+        .ai-input-wrap { display:flex; align-items:flex-end; gap:8px; padding:7px 7px 7px 10px; border:1px solid #DFDAD0; border-radius:13px; background:#FFFFFF; }
+        .ai-input-wrap:focus-within { border-color:#B9722E; box-shadow:0 0 0 3px rgba(185,114,46,.16); }
         .ai-input-wrap textarea { flex:1; min-height:22px; max-height:100px; resize:none; border:0 !important; outline:0; box-shadow:none !important; padding:3px 0; background:transparent !important; font-size:12.5px; line-height:1.45; border-radius:0 !important; }
-        .ai-input-wrap button { width:32px; height:32px; flex:0 0 32px; border:0; border-radius:9px; background:#DCC6A9; color:#332B23; font-weight:800; cursor:pointer; }
+        .ai-input-wrap button { width:32px; height:32px; flex:0 0 32px; border:0; border-radius:9px; background:#B9722E; color:#FFFFFF; font-weight:800; cursor:pointer; }
         .ai-input-wrap button:disabled { opacity:.4; cursor:not-allowed; box-shadow:none; }
-        .ai-disclaimer { margin-top:7px; color:#9A938C; font-size:9.5px; text-align:center; }
+        .ai-disclaimer { margin-top:7px; color:#9A958B; font-size:9.5px; text-align:center; }
         @media (max-width: 600px) {
           .floating-ai-button { right:14px; bottom:14px; padding:11px 13px; }
           .floating-ai-button span { display:none; }
@@ -1390,19 +1393,19 @@ function levelCan(level, module, action = "view") {
         }
         /* --- Modern dark/light hybrid UI system --- */
         :root { color-scheme: light; }
-        ::selection { background: rgba(220,198,169,.18); }
+        ::selection { background: rgba(185,114,46,.20); }
         .erp-sidebar nav button { transition: background .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
-        .erp-sidebar nav button:hover { color: #fff !important; background: rgba(255,255,255,.055) !important; border-color: rgba(255,255,255,.08) !important; transform: translateX(2px); }
-        .erp-sidebar nav button[style*="linear-gradient"] { box-shadow: 0 0 22px rgba(220,198,169,.12), inset 0 1px 0 rgba(255,255,255,.06); }
+        .erp-sidebar nav button:hover { color: #FFFFFF !important; background: rgba(255,255,255,.055) !important; border-color: rgba(255,255,255,.08) !important; transform: translateX(2px); }
+        .erp-sidebar nav button[style*="linear-gradient"] { box-shadow: 0 0 22px rgba(185,114,46,.28), inset 0 1px 0 rgba(255,255,255,.06); }
         .erp-sidebar > div:first-child { letter-spacing: -.35px; }
         button { transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease, opacity .16s ease; }
         button:not(:disabled):hover { box-shadow: 0 5px 16px rgba(17,17,17,.07); }
         button:not(:disabled):active { transform: translateY(1px); }
-        input, select, textarea { border-color: #E5E7EB !important; border-radius: 12px !important; background: #fff !important; }
-        input:focus, select:focus, textarea:focus { border-color: #B79F80 !important; box-shadow: 0 0 0 3px rgba(183,159,128,.10) !important; }
+        input, select, textarea { border-color: #EDE8DE !important; border-radius: 12px !important; background: #FFFFFF !important; }
+        input:focus, select:focus, textarea:focus { border-color: #B9722E !important; box-shadow: 0 0 0 3px rgba(185,114,46,.16) !important; }
         div[style*="border-radius: 12px"], div[style*="border-radius: 14px"], div[style*="border-radius: 16px"], div[style*="border-radius: 18px"] { border-radius: 14px !important; }
-        table { border-color: #E5E7EB; }
-        th { font-weight: 650 !important; color: #555 !important; }
+        table { border-color: #EDE8DE; }
+        th { font-weight: 650 !important; color: #5B564C !important; }
         .erp-content h1 { letter-spacing: -.45px; }
         .erp-content h2, .erp-content h3 { letter-spacing: -.2px; }
         @media (max-width: 560px) {
@@ -1412,7 +1415,7 @@ function levelCan(level, module, action = "view") {
       `}</style>
 
       {/* Sidebar */}
-      <aside className="erp-sidebar" style={{ width: 236, minHeight: "100vh", display: "flex", flexDirection: "column", background: "#FBFAF8", color: COLORS.ink, padding: "24px 14px", flexShrink: 0, borderRight: `1px solid ${COLORS.line}`, boxShadow: "4px 0 18px rgba(17,17,17,.025)" }}>
+      <aside className="erp-sidebar" style={{ width: 236, minHeight: "100vh", display: "flex", flexDirection: "column", background: "#FFFBF1", color: COLORS.ink, padding: "24px 14px", flexShrink: 0, borderRight: `1px solid ${COLORS.line}`, boxShadow: "4px 0 18px rgba(17,17,17,.025)" }}>
         <div style={{ padding: "0 12px 20px", borderBottom: `1px solid ${COLORS.line}` }}>
           <div style={{ fontFamily: FONT_HEAD, fontSize: 22, fontWeight: 800, letterSpacing: "-.6px" }}>Tân Hòa</div>
           <div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>Outdoor Furniture · ERP</div>
@@ -1425,15 +1428,15 @@ function levelCan(level, module, action = "view") {
             ["TOOLS", levelCan(currentUser?.level, "backup", "export") ? [{ key: "backup", label: "Export Data", icon: Download, onClick: handleExportBackup }] : []],
           ];
           return groups.map(([group, items]) => items.length ? <div key={group} style={{ marginTop: 18 }}>
-            <div style={{ padding: "0 12px 8px", fontSize: 10.5, fontWeight: 800, color: "#8B837B", letterSpacing: 1.4 }}>{group}</div>
+            <div style={{ padding: "0 12px 8px", fontSize: 10.5, fontWeight: 800, color: "#8A857B", letterSpacing: 1.4 }}>{group}</div>
             <div style={{ display: "grid", gap: 2 }}>
-              {items.map((n) => { const Icon=n.icon; return <button key={n.key} onClick={() => n.onClick ? n.onClick() : setView(n.key)} style={{ width: "100%", textAlign: "left", background: view === n.key ? "#EDE1D2" : "transparent", color: view === n.key ? COLORS.ink : "#5E6268", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 13.5, fontWeight: view === n.key ? 750 : 550, cursor: "pointer", fontFamily: FONT_BODY, display: "flex", alignItems: "center", gap: 10 }}><Icon size={17} strokeWidth={2} />{n.label}</button>; })}
+              {items.map((n) => { const Icon=n.icon; return <button key={n.key} onClick={() => n.onClick ? n.onClick() : setView(n.key)} style={{ width: "100%", textAlign: "left", background: view === n.key ? "#E9E4DA" : "transparent", color: view === n.key ? COLORS.ink : "#676258", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 13.5, fontWeight: view === n.key ? 750 : 550, cursor: "pointer", fontFamily: FONT_BODY, display: "flex", alignItems: "center", gap: 10 }}><Icon size={17} strokeWidth={2} />{n.label}</button>; })}
             </div>
           </div> : null);
         })()}
         <div style={{ marginTop: "auto", padding: "22px 12px 0", borderTop: `1px solid ${COLORS.line}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 36, height: 36, borderRadius: "50%", background: COLORS.wood, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800 }}>{String(currentUser?.full_name || currentUser?.email || "U").slice(0,2).toUpperCase()}</div><div style={{ minWidth: 0 }}><div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser?.full_name || "User"}</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Level {currentUser?.level ?? "—"}</div></div></div>
-          <button onClick={onLogout} style={{ marginTop: 14, width: "100%", background: "transparent", border: 0, color: "#6B6F75", textAlign: "left", padding: "8px 2px", cursor: "pointer", fontFamily: FONT_BODY, fontSize: 12.5 }}>Sign out</button>
+          <button onClick={onLogout} style={{ marginTop: 14, width: "100%", background: "transparent", border: 0, color: "#746F65", textAlign: "left", padding: "8px 2px", cursor: "pointer", fontFamily: FONT_BODY, fontSize: 12.5 }}>Sign out</button>
         </div>
       </aside>
       {/* Content */}
@@ -1462,7 +1465,7 @@ function levelCan(level, module, action = "view") {
           />
         )}
         {view === "samples" && levelCan(currentUser?.level, "samples") && (
-          <ProductsView
+          <SamplesView
             samples={samples}
             saveSamples={setAndSave.samples}
             customers={customers}
@@ -2220,7 +2223,7 @@ function OrdersView({ orders, saveOrders, customers, customerName, samples }) {
   );
 }
 
-/* ---------------- Samples ---------------- */
+/* ---------------- Products ---------------- */
 
 /* ---------------- Product export ---------------- */
 
@@ -2887,7 +2890,7 @@ function ImportStatCard({ label, value, tone }) {
   return <div style={{ padding: "11px 12px", border: `1px solid ${COLORS.line}`, borderRadius: 10, background: COLORS.bg }}><div style={{ fontSize: 10.5, color: COLORS.inkSoft }}>{label}</div><div style={{ marginTop: 3, fontSize: 20, fontWeight: 750, color }}>{value}</div></div>;
 }
 
-function ProductImportModal({ samples, saveSamples, customers, productTypes, materialLists, onClose }) {
+function SampleImportModal({ samples, saveSamples, customers, productTypes, materialLists, onClose }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [parsing, setParsing] = useState(false);
@@ -2933,18 +2936,18 @@ function ProductImportModal({ samples, saveSamples, customers, productTypes, mat
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.46)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 20 }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(22,22,22,.46)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(980px, 100%)", maxHeight: "88vh", background: COLORS.panel, borderRadius: 18, border: `1px solid ${COLORS.line}`, boxShadow: "0 28px 90px rgba(0,0,0,.25)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}` }}>
           <div><div style={{ fontSize: 19, fontWeight: 750 }}>Import Products from Excel</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Import new products or update existing products. Embedded Excel photos can be uploaded to Supabase Storage automatically.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
         </div>
         <div style={{ padding: 18, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ padding: 14, borderRadius: 12, background: "#F5F1E9", border: `1px solid ${COLORS.line}` }}>
+          <div style={{ padding: 14, borderRadius: 12, background: "#F7F2E8", border: `1px solid ${COLORS.line}` }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>How to import</div>
-            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one product per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the product photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here. <b>Matching rule:</b> ERP Code is the primary update key. If ERP Code already exists, the existing product is updated in place; if it does not exist, a new product is created.</div>
+            <div style={{ fontSize: 12, color: COLORS.inkSoft, lineHeight: 1.6 }}>1) Download the template. 2) Keep the header row unchanged. 3) Fill one product per row. 4) For Customer / Product Type / Materials, use the existing ID, code, or exact name from the ERP. 5) Put the product photo into the Excel file on the same row in <b>Image (embedded)</b> using <b>Insert → Pictures → Place in Cell</b> (or a normal floating picture). 6) Upload the completed .xlsx here. <b>Matching rule:</b> if ERP Code already exists, the existing product is updated; if it does not exist, a new product is created.</div>
           </div>
-          <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 110, border: `2px dashed ${COLORS.line}`, borderRadius: 14, cursor: "pointer", background: file ? COLORS.bg : "#fff" }}>
+          <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 110, border: `2px dashed ${COLORS.line}`, borderRadius: 14, cursor: "pointer", background: file ? COLORS.bg : "#FFFFFF" }}>
             <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile} style={{ display: "none" }} />
             <FileSpreadsheet size={28} color={COLORS.wood} />
             <div><div style={{ fontWeight: 700 }}>{file ? file.name : "Choose an Excel .xlsx file"}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>{parsing ? "Reading workbook…" : "Click to choose / replace file"}</div></div>
@@ -2953,7 +2956,7 @@ function ProductImportModal({ samples, saveSamples, customers, productTypes, mat
             <ImportStatCard label="Rows" value={parsed.totalRows} /> <ImportStatCard label="New" value={parsed.createCount} tone="green" /> <ImportStatCard label="Updates" value={parsed.updateCount} tone="wood" /> <ImportStatCard label="Embedded photos" value={parsed.imageCount} tone="teal" />
           </div>}
           {parsed?.unknown?.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.amberSoft, fontSize: 12 }}><b>Ignored columns:</b> {parsed.unknown.join(", ")}</div>}
-          {errors.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.redSoft, border: `1px solid #f0caca` }}><div style={{ fontWeight: 700, marginBottom: 6, color: COLORS.red }}><AlertCircle size={14} style={{ verticalAlign: "-2px" }} /> {errors.length} row(s) have errors and will be skipped.</div><div style={{ maxHeight: 150, overflow: "auto", fontSize: 11.5 }}>{errors.slice(0, 30).map((e) => <div key={`${e.row}-${e.id}`} style={{ padding: "4px 0" }}>Row {e.row} · {e.id}: {e.message}</div>)}</div></div>}
+          {errors.length > 0 && <div style={{ padding: 12, borderRadius: 10, background: COLORS.redSoft, border: `1px solid #DBD6CC` }}><div style={{ fontWeight: 700, marginBottom: 6, color: COLORS.red }}><AlertCircle size={14} style={{ verticalAlign: "-2px" }} /> {errors.length} row(s) have errors and will be skipped.</div><div style={{ maxHeight: 150, overflow: "auto", fontSize: 11.5 }}>{errors.slice(0, 30).map((e) => <div key={`${e.row}-${e.id}`} style={{ padding: "4px 0" }}>Row {e.row} · {e.id}: {e.message}</div>)}</div></div>}
           {message && <div style={{ padding: 12, borderRadius: 10, background: COLORS.greenSoft, color: COLORS.green, fontSize: 12.5 }}><CheckCircle2 size={14} style={{ verticalAlign: "-2px" }} /> {message}</div>}
           {parsed?.results?.length > 0 && <div style={{ overflow: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}><thead><tr>{["Row", "Product ID", "Product Name", "ERP Code", "Customer", "Stage"].map((h) => <th key={h} style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${COLORS.line}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead><tbody>{parsed.results.slice(0, 20).map((s) => <tr key={s.id}><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>✓</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.id}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.name}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.erpNo}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{customers.find((c) => c.id === s.customerId)?.name || ""}</td><td style={{ padding: 8, borderBottom: `1px solid ${COLORS.line}` }}>{s.stage}</td></tr>)}</tbody></table></div>}
         </div>
@@ -2966,7 +2969,7 @@ function ProductImportModal({ samples, saveSamples, customers, productTypes, mat
   );
 }
 
-function ProductExportModal({ samples, customers, productTypes, materialLists, materialPreps, initialSampleId, selectedSampleIds = [], onClose }) {
+function SampleExportModal({ samples, customers, productTypes, materialLists, materialPreps, initialSampleId, selectedSampleIds = [], onClose }) {
   const [selectedKeys, setSelectedKeys] = useState(() => SAMPLE_EXPORT_FIELDS.map((f) => f.key));
   const [fieldSearch, setFieldSearch] = useState("");
   const [filters, setFilters] = useState({});
@@ -3027,7 +3030,7 @@ function ProductExportModal({ samples, customers, productTypes, materialLists, m
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,22,.46)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(23,23,23,.46)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ width: "min(1180px, 96vw)", maxHeight: "92vh", background: COLORS.panel, borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
           <div><h2 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 21 }}>Export Product Data</h2><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 12.5 }}>Choose columns and apply column filters. Export creates an Excel file with images embedded directly in the workbook.</div></div>
@@ -3043,8 +3046,8 @@ function ProductExportModal({ samples, customers, productTypes, materialLists, m
           <div style={{ display: "grid", gridTemplateColumns: "minmax(360px, 1.05fr) minmax(420px, 1.35fr)", gap: 18 }}>
             <Panel title="Columns & filters" action={<div style={{ display: "flex", gap: 6 }}><Button small variant="subtle" onClick={selectAll}>Select all</Button><Button small variant="ghost" onClick={clearAll}>Clear</Button></div>}>
               <Input value={fieldSearch} onChange={(e) => setFieldSearch(e.target.value)} placeholder="Search fields…" style={{ marginBottom: 10 }} />
-              <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 9, background: "#F5F1E9", color: COLORS.inkSoft, fontSize: 11.5 }}>Tip: select <b>Image (embedded)</b> for the product photo or <b>QR Code</b> to place a scannable QR image directly into the Excel file.</div>
-              <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F7F2EA", border: `1px solid ${COLORS.orange || "#B79F80"}` }}>
+              <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 9, background: "#F7F2E8", color: COLORS.inkSoft, fontSize: 11.5 }}>Tip: select <b>Image (embedded)</b> for the product photo or <b>QR Code</b> to place a scannable QR image directly into the Excel file.</div>
+              <div style={{ marginBottom: 8, padding: "9px 10px", borderRadius: 10, background: "#F9F4EA", border: `1px solid ${COLORS.orange || "#A9A49A"}` }}>
                 {(() => { const field = fieldMap.get("qrCode"); const checked = selectedKeys.includes("qrCode"); return <div style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={checked} onChange={() => toggleField("qrCode")} />
                   <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>QR Code</div><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Embedded QR image linking to this product's public passport.</div></div>
@@ -3053,7 +3056,7 @@ function ProductExportModal({ samples, customers, productTypes, materialLists, m
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {filteredFields.filter((field) => field.key !== "qrCode").map((field) => {
                   const checked = selectedKeys.includes(field.key);
-                  return <div key={field.key} style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 9, background: checked ? COLORS.bg : "#fff", border: `1px solid ${checked ? COLORS.line : "transparent"}` }}>
+                  return <div key={field.key} style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 9, background: checked ? COLORS.bg : "#FFFFFF", border: `1px solid ${checked ? COLORS.line : "transparent"}` }}>
                     <input type="checkbox" checked={checked} onChange={() => toggleField(field.key)} />
                     <div><div style={{ fontSize: 12.5, fontWeight: 600 }}>{field.label}</div><Input value={filters[field.key] || ""} onChange={(e) => setFilters((current) => ({ ...current, [field.key]: e.target.value }))} placeholder={`Filter ${field.label.toLowerCase()}…`} style={{ marginTop: 5, padding: "6px 8px", fontSize: 12 }} /></div>
                   </div>;
@@ -3148,8 +3151,8 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1600, padding: 18 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1120px, 100%)", maxHeight: "92vh", background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 30px 100px rgba(0,0,0,.28)", display: "flex", flexDirection: "column" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(22,22,22,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1600, padding: 18 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1120px, 100%)", maxHeight: "92vh", background: "#FFFFFF", borderRadius: 18, overflow: "hidden", boxShadow: "0 30px 100px rgba(0,0,0,.28)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div><div style={{ fontSize: 20, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={19} color={COLORS.wood} /> Upload Product from Image</div><div style={{ fontSize: 12.5, color: COLORS.inkSoft, marginTop: 3 }}>Upload a product specification image. AI will fill the Product fields for you to review before saving.</div></div>
           <Button variant="ghost" small onClick={onClose}><X size={14} /> Close</Button>
@@ -3169,7 +3172,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
                   <textarea value={descriptionText} onChange={(e) => setDescriptionText(e.target.value)} placeholder="Paste the product description here…" style={{ ...inputStyle, minHeight: 280, resize: "vertical" }} />
                 </Field>
                 {error && <div style={{ marginTop: 12, padding: 10, borderRadius: 9, background: COLORS.redSoft, color: COLORS.red, fontSize: 12 }}>{error}</div>}
-                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#F7F7F7", fontSize: 12, lineHeight: 1.6 }}><b>What AI will extract</b><br />Name · Product type · Qty · Dimensions · Materials · Finish / Color · Hardware · Construction · Packing · Revision.</div>
+                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#FDF8EE", fontSize: 12, lineHeight: 1.6 }}><b>What AI will extract</b><br />Name · Product type · Qty · Dimensions · Materials · Finish / Color · Hardware · Construction · Packing · Revision.</div>
               </div>
             </div>
           ) : (
@@ -3198,7 +3201,7 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
 }
 
 
-function ProductsView({ samples, saveSamples, customers, customerName, productTypes, productTypeName, orders, materialLists, saveMaterialList, materialPreps, saveMaterialPreps, tasks, saveTasks }) {
+function SamplesView({ samples, saveSamples, customers, customerName, productTypes, productTypeName, orders, materialLists, saveMaterialList, materialPreps, saveMaterialPreps, tasks, saveTasks }) {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState(null);
@@ -3253,7 +3256,7 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
     const idSet = new Set(ids || []);
     if (!idSet.size) return;
     const count = idSet.size;
-    if (!confirm(`Delete ${count} selected product${count === 1 ? "" : "s"}? This action cannot be undone.`)) return;
+    if (!confirm(`Delete ${count} selected sample${count === 1 ? "" : "s"}? This action cannot be undone.`)) return;
     saveSamples(samples.filter((s) => !idSet.has(s.id)));
     if (viewing && idSet.has(viewing.id)) setViewing(null);
   };
@@ -3315,7 +3318,7 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
         const file = new File([blob], `sample-${Date.now()}.${(blob.type || "image/jpeg").split("/")[1] || "jpg"}`, { type: blob.type || "image/jpeg" });
         next.image = await uploadStorageImage(file, `samples/draft-${Date.now()}`, "sample");
       } catch (err) {
-        console.warn("Could not store the uploaded product image:", err);
+        console.warn("Could not store the uploaded sample image:", err);
       }
     }
     setEditing(next);
@@ -3425,7 +3428,7 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#F7F0E7", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#F7F2E8", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
           <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Products</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track and manage all products from development to approval.</div></div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New product</Button></div>
@@ -3439,13 +3442,13 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
         const ready = samples.filter((s) => getMaterialReadiness(s, materialPreps).status === "Ready").length;
         const cards = [
           ["Total Products", total, "All products currently loaded", Boxes, COLORS.wood],
-          ["In Progress", inProgress, "Products beyond request stage", CalendarDays, "#6B8BB5"],
+          ["In Progress", inProgress, "Products beyond request stage", CalendarDays, "#8C877D"],
           ["Overdue", overdue, "Past target date", AlertCircle, COLORS.red],
           ["Ready for Assembly", ready, "All required materials done", CheckCircle2, COLORS.green],
           ["Completed", completed, "Completed / shipped products", CheckCircle2, COLORS.woodDark],
         ];
         return <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(150px, 1fr))", gap: 12 }}>
-          {cards.map(([label,value,sub,Icon,color]) => <div key={label} style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 15, padding: 15, boxShadow: "0 5px 18px rgba(17,17,17,.035)" }}>
+          {cards.map(([label,value,sub,Icon,color]) => <div key={label} style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 15, padding: 15, boxShadow: "0 5px 18px rgba(17,17,17,.035)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><div style={{ width: 34, height: 34, borderRadius: 11, background: `${color}18`, color, display: "grid", placeItems: "center" }}><Icon size={17} /></div><span style={{ fontSize: 10.5, color: COLORS.inkSoft }}>Products</span></div>
             <div style={{ marginTop: 11, fontSize: 27, fontWeight: 850, letterSpacing: "-.7px" }}>{value}</div><div style={{ marginTop: 2, fontSize: 12.5, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 5, fontSize: 10.5, color: COLORS.inkSoft }}>{sub}</div>
           </div>)}
@@ -3475,17 +3478,17 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
           <option value="Accept">Accept</option>
           <option value="Cancel">Cancel</option>
         </Select>
-        <button type="button" style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 12px", border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#fff", color: COLORS.ink, fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 650, cursor: "pointer" }}>
+        <button type="button" style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 12px", border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#FFFFFF", color: COLORS.ink, fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 650, cursor: "pointer" }}>
           <SlidersHorizontal size={14} /> More filters
         </button>
-        <div style={{ display: "flex", border: `1px solid ${COLORS.line}`, borderRadius: 9, overflow: "hidden", background: "#fff" }}>
-          <button type="button" onClick={() => setViewMode("kanban")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "kanban" ? COLORS.wood : "#fff", color: viewMode === "kanban" ? "#fff" : COLORS.ink }}>
+        <div style={{ display: "flex", border: `1px solid ${COLORS.line}`, borderRadius: 9, overflow: "hidden", background: "#FFFFFF" }}>
+          <button type="button" onClick={() => setViewMode("kanban")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "kanban" ? COLORS.wood : "#FFFFFF", color: viewMode === "kanban" ? "#FFFFFF" : COLORS.ink }}>
             Kanban
           </button>
-          <button type="button" onClick={() => setViewMode("table")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "table" ? COLORS.wood : "#fff", color: viewMode === "table" ? "#fff" : COLORS.ink }}>
+          <button type="button" onClick={() => setViewMode("table")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "table" ? COLORS.wood : "#FFFFFF", color: viewMode === "table" ? "#FFFFFF" : COLORS.ink }}>
             <Table2 size={14} /> Table
           </button>
-          <button type="button" onClick={() => setViewMode("grid")} style={{ padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "grid" ? COLORS.wood : "#fff", color: viewMode === "grid" ? "#fff" : COLORS.ink }}>
+          <button type="button" onClick={() => setViewMode("grid")} style={{ padding: "8px 13px", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650, fontFamily: FONT_BODY, background: viewMode === "grid" ? COLORS.wood : "#FFFFFF", color: viewMode === "grid" ? "#FFFFFF" : COLORS.ink }}>
             Grid
           </button>
         </div>
@@ -3644,8 +3647,8 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
               <Field label="Pcs/Ctn"><Input type="number" min="0" value={editing.pcsPerCtn} onChange={set("pcsPerCtn")} /></Field>
               <Field label="Net Weight"><Input type="number" min="0" value={editing.netWeight} onChange={set("netWeight")} /></Field>
               <Field label="Gross Weight"><Input type="number" min="0" value={editing.grossWeight} onChange={set("grossWeight")} /></Field>
-              <Field label="Carton Qty"><Input value={editing.cartonQty || ""} readOnly style={{ background: "#F7F5F2" }} /></Field>
-              <Field label="CBM"><Input value={editing.cbm || ""} readOnly style={{ background: "#F7F5F2", fontWeight: 700 }} /></Field>
+              <Field label="Carton Qty"><Input value={editing.cartonQty || ""} readOnly style={{ background: "#FBF6EC" }} /></Field>
+              <Field label="CBM"><Input value={editing.cbm || ""} readOnly style={{ background: "#FBF6EC", fontWeight: 700 }} /></Field>
             </div>
             <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: -6 }}>Carton Qty = Product Qty ÷ Pcs/Ctn. CBM = L × W × H ÷ 10⁹ × Carton Qty.</div>
 
@@ -3699,7 +3702,7 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
                     {COMPONENT_OPTIONS.map((name) => {
                       const selected = (editing.requiredComponents || []).find((c) => c.name === name);
                       return (
-                        <label key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#fff", border: `1px solid ${selected ? COLORS.wood : COLORS.line}`, borderRadius: 8, cursor: "pointer" }}>
+                        <label key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#FFFFFF", border: `1px solid ${selected ? COLORS.wood : COLORS.line}`, borderRadius: 8, cursor: "pointer" }}>
                           <input type="checkbox" checked={!!selected} onChange={(e) => {
                             const current = editing.requiredComponents || [];
                             const next = e.target.checked
@@ -3726,7 +3729,7 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
       )}
 
       {viewing && !showForm && (
-        <ProductDetail
+        <SampleDetail
           sample={viewing}
           customerName={customerName}
           productTypeName={productTypeName}
@@ -3761,9 +3764,9 @@ function ProductsView({ samples, saveSamples, customers, customerName, productTy
         onApply={applyAIDescription}
         onClose={() => setShowAIDescription(false)}
       />}
-      {showImport && <ProductImportModal samples={samples} saveSamples={saveSamples} customers={customers} productTypes={productTypes} materialLists={materialLists} onClose={() => setShowImport(false)} />}
-      {showExport && <ProductExportModal samples={samples} customers={customers} productTypes={productTypes} materialLists={materialLists} materialPreps={materialPreps} initialSampleId={exportSampleId} selectedSampleIds={selectedSampleIds} onClose={() => { setShowExport(false); setExportSampleId(null); }} />}
-      {qrSample && <ProductQRModal sample={qrSample} customerName={customerName(qrSample.customerId)} onClose={() => setQrSample(null)} />}
+      {showImport && <SampleImportModal samples={samples} saveSamples={saveSamples} customers={customers} productTypes={productTypes} materialLists={materialLists} onClose={() => setShowImport(false)} />}
+      {showExport && <SampleExportModal samples={samples} customers={customers} productTypes={productTypes} materialLists={materialLists} materialPreps={materialPreps} initialSampleId={exportSampleId} selectedSampleIds={selectedSampleIds} onClose={() => { setShowExport(false); setExportSampleId(null); }} />}
+      {qrSample && <SampleQRModal sample={qrSample} customerName={customerName(qrSample.customerId)} onClose={() => setQrSample(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>
@@ -3849,29 +3852,29 @@ function ProductTableView({ products, productTypeName, customerName, materialPre
   const readiness = (p) => getMaterialReadiness(p, materialPreps);
   const stageTone = (stage) => {
     const s = normalizeSampleWorkflowStage(stage);
-    if (s === "Shipping") return { bg: "#EEF7F0", color: "#2F7A45" };
-    if (s === "Quality Check" || s === "Customer Correction") return { bg: "#FFF5E8", color: "#9A6B2F" };
-    if (s === "Assembly") return { bg: "#EEF3FA", color: "#4D6F9C" };
-    return { bg: "#F3F4F6", color: "#5E6470" };
+    if (s === "Shipping") return { bg: "#FAF5EB", color: "#645F55" };
+    if (s === "Quality Check" || s === "Customer Correction") return { bg: "#FDF8EE", color: "#787369" };
+    if (s === "Assembly") return { bg: "#F8F3E9", color: "#706B61" };
+    return { bg: "#FAF5EB", color: "#6A655B" };
   };
 
   if (!products.length) return (
-    <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 14, padding: 48, textAlign: "center", color: COLORS.inkSoft }}>
+    <div style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 14, padding: 48, textAlign: "center", color: COLORS.inkSoft }}>
       No products match your search/filters.
     </div>
   );
 
   return (
-    <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 28px rgba(31,41,55,.045)" }}>
+    <div style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 28px rgba(40,40,40,.045)" }}>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", minWidth: 1120, borderCollapse: "separate", borderSpacing: 0, fontSize: 12.5 }}>
           <thead>
-            <tr style={{ background: "#F8FAFC" }}>
+            <tr style={{ background: "#FFFBF1" }}>
               <th style={{ width: 44, padding: "11px 12px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "center" }}>
                 <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select visible products" />
               </th>
               {[["Product ID",110],["Product",220],["Customer",145],["ERP No.",175],["Product Status",115],["Stage",155],["Target Date",115],["Materials",125],["Actions",100]].map(([label,width]) => (
-                <th key={label} style={{ minWidth: width, padding: "11px 10px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "left", color: "#697386", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>{label}</th>
+                <th key={label} style={{ minWidth: width, padding: "11px 10px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "left", color: "#787369", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>{label}</th>
               ))}
             </tr>
           </thead>
@@ -3881,31 +3884,31 @@ function ProductTableView({ products, productTypeName, customerName, materialPre
               const ready = readiness(p);
               const selected = selectedSet.has(p.id);
               return (
-                <tr key={p.id} onClick={() => onRowClick(p)} style={{ background: selected ? "#FCF8F2" : "#fff", cursor: "pointer" }} onMouseEnter={(e) => { e.currentTarget.style.background = selected ? "#FBF4E8" : "#F9FAFB"; }} onMouseLeave={(e) => { e.currentTarget.style.background = selected ? "#FCF8F2" : "#fff"; }}>
+                <tr key={p.id} onClick={() => onRowClick(p)} style={{ background: selected ? "#FFFAF0" : "#FFFFFF", cursor: "pointer" }} onMouseEnter={(e) => { e.currentTarget.style.background = selected ? "#FBF6EC" : "#FFFBF1"; }} onMouseLeave={(e) => { e.currentTarget.style.background = selected ? "#FFFAF0" : "#FFFFFF"; }}>
                   <td style={{ padding: "10px 12px", borderBottom: `1px solid ${COLORS.line}`, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selected} onChange={() => toggle(p.id)} aria-label={`Select ${p.id}`} />
                   </td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, fontWeight: 750, color: "#252B36", whiteSpace: "nowrap" }}>{p.id || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, fontWeight: 750, color: "#302B21", whiteSpace: "nowrap" }}>{p.id || "—"}</td>
                   <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 180 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 7, background: "#F1F3F5", border: `1px solid ${COLORS.line}`, display: "grid", placeItems: "center", overflow: "hidden", flex: "0 0 auto" }}>
-                        {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageIcon size={15} color="#9AA2AF" />}
+                      <div style={{ width: 34, height: 34, borderRadius: 7, background: "#F9F4EA", border: `1px solid ${COLORS.line}`, display: "grid", placeItems: "center", overflow: "hidden", flex: "0 0 auto" }}>
+                        {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageIcon size={15} color="#A7A298" />}
                       </div>
-                      <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700, color: "#20242C", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name || "(unnamed product)"}</div><div style={{ color: "#8A93A2", fontSize: 10.5, marginTop: 2 }}>{productTypeName(p.productTypeId) || "Product"}</div></div>
+                      <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700, color: "#2A251B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name || "(unnamed product)"}</div><div style={{ color: "#989389", fontSize: 10.5, marginTop: 2 }}>{productTypeName(p.productTypeId) || "Product"}</div></div>
                     </div>
                   </td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, color: "#4B5563" }}>{customerName(p.customerId) || "—"}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11.5, color: "#4B5563", whiteSpace: "nowrap" }}>{p.erpNo || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, color: "#5A554B" }}>{customerName(p.customerId) || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11.5, color: "#5A554B", whiteSpace: "nowrap" }}>{p.erpNo || "—"}</td>
                   <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}>
-                    <span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 999, background: String(p.productStatus || "").toLowerCase() === "cancel" ? "#FEF0F0" : "#EEF7F0", color: String(p.productStatus || "").toLowerCase() === "cancel" ? "#B54747" : "#32764A", fontSize: 10.5, fontWeight: 750 }}>{p.productStatus || "—"}</span>
+                    <span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 999, background: String(p.productStatus || "").toLowerCase() === "cancel" ? "#FAF5EB" : "#FAF5EB", color: String(p.productStatus || "").toLowerCase() === "cancel" ? "#6E695F" : "#635E54", fontSize: 10.5, fontWeight: 750 }}>{p.productStatus || "—"}</span>
                   </td>
                   <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}><span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 6, background: tone.bg, color: tone.color, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap" }}>{normalizeSampleWorkflowStage(p.stage)}</span></td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, color: p.targetDate && p.targetDate < todayStr() ? COLORS.red : "#4B5563", whiteSpace: "nowrap" }}>{p.targetDate || "—"}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}><span style={{ color: ready.status === "Ready" ? "#2F7A45" : "#9A6B2F", fontWeight: 700 }}>{ready.status === "Ready" ? "Ready" : `${ready.done}/${ready.total || 0}`}</span></td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}`, color: p.targetDate && p.targetDate < todayStr() ? COLORS.red : "#5A554B", whiteSpace: "nowrap" }}>{p.targetDate || "—"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }}><span style={{ color: ready.status === "Ready" ? "#645F55" : "#787369", fontWeight: 700 }}>{ready.status === "Ready" ? "Ready" : `${ready.done}/${ready.total || 0}`}</span></td>
                   <td style={{ padding: "10px", borderBottom: `1px solid ${COLORS.line}` }} onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                      <button type="button" title="Edit" onClick={() => onEdit(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><Pencil size={13} /></button>
-                      <button type="button" title="QR" onClick={() => onShowQR(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><QrCodeIcon size={13} /></button>
+                      <button type="button" title="Edit" onClick={() => onEdit(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><Pencil size={13} /></button>
+                      <button type="button" title="QR" onClick={() => onShowQR(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><QrCodeIcon size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -3914,12 +3917,12 @@ function ProductTableView({ products, productTypeName, customerName, materialPre
           </tbody>
         </table>
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderTop: `1px solid ${COLORS.line}`, background: "#fff", color: "#7A8493", fontSize: 11.5 }}>
-        <div>Total Rows: <b style={{ color: "#374151" }}>{products.length.toLocaleString()}</b>{selectedIds.length ? <span style={{ marginLeft: 12 }}>Selected: <b style={{ color: COLORS.woodDark }}>{selectedIds.length}</b></span> : null}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderTop: `1px solid ${COLORS.line}`, background: "#FFFFFF", color: "#89847A", fontSize: 11.5 }}>
+        <div>Total Rows: <b style={{ color: "#464137" }}>{products.length.toLocaleString()}</b>{selectedIds.length ? <span style={{ marginLeft: 12 }}>Selected: <b style={{ color: COLORS.woodDark }}>{selectedIds.length}</b></span> : null}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button type="button" disabled={safePage <= 1} onClick={() => onPageChange(safePage - 1)} style={{ width: 30, height: 30, border: `1px solid ${COLORS.line}`, borderRadius: 7, background: "#fff", cursor: safePage <= 1 ? "not-allowed" : "pointer", opacity: safePage <= 1 ? .45 : 1 }}><ChevronLeft size={14} /></button>
-          <span style={{ minWidth: 70, textAlign: "center", color: "#4B5563", fontWeight: 650 }}>Page {safePage} / {totalPages}</span>
-          <button type="button" disabled={safePage >= totalPages} onClick={() => onPageChange(safePage + 1)} style={{ width: 30, height: 30, border: `1px solid ${COLORS.line}`, borderRadius: 7, background: "#fff", cursor: safePage >= totalPages ? "not-allowed" : "pointer", opacity: safePage >= totalPages ? .45 : 1 }}><ChevronRight size={14} /></button>
+          <button type="button" disabled={safePage <= 1} onClick={() => onPageChange(safePage - 1)} style={{ width: 30, height: 30, border: `1px solid ${COLORS.line}`, borderRadius: 7, background: "#FFFFFF", cursor: safePage <= 1 ? "not-allowed" : "pointer", opacity: safePage <= 1 ? .45 : 1 }}><ChevronLeft size={14} /></button>
+          <span style={{ minWidth: 70, textAlign: "center", color: "#5A554B", fontWeight: 650 }}>Page {safePage} / {totalPages}</span>
+          <button type="button" disabled={safePage >= totalPages} onClick={() => onPageChange(safePage + 1)} style={{ width: 30, height: 30, border: `1px solid ${COLORS.line}`, borderRadius: 7, background: "#FFFFFF", cursor: safePage >= totalPages ? "not-allowed" : "pointer", opacity: safePage >= totalPages ? .45 : 1 }}><ChevronRight size={14} /></button>
         </div>
       </div>
     </div>
@@ -3941,7 +3944,7 @@ function SampleCard({ sample: s, customerName, onClick }) {
         flexDirection: "column",
         transition: "transform .12s, box-shadow .12s",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 16px rgba(37,33,28,0.08)"; }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 16px rgba(34,34,34,0.08)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
     >
       <div style={{ position: "relative", width: "100%", paddingTop: "75%", background: COLORS.bg }}>
@@ -4024,10 +4027,10 @@ function getMaterialReadiness(sample, materialPreps = []) {
 }
 
 function materialReadinessTone(readiness) {
-  if (readiness.status === "Ready") return { bg: "#EAF7EE", color: "#247A45", border: "#BFE5CB" };
-  if (readiness.status === "Partial") return { bg: "#F7F1E9", color: "#8A6F50", border: "#DCC6A9" };
-  if (readiness.status === "Blocked") return { bg: "#FBF1EE", color: "#A6533D", border: "#E7C2B8" };
-  return { bg: "#F3F4F6", color: "#73777D", border: "#E0E2E5" };
+  if (readiness.status === "Ready") return { bg: "#E8F5EA", color: "#256B34", border: "#C2E1C7" };
+  if (readiness.status === "Partial") return { bg: "#FCEEDA", color: "#96650F", border: "#EFD9AD" };
+  if (readiness.status === "Blocked") return { bg: "#FBEAE7", color: "#96352A", border: "#F0C6C0" };
+  return { bg: "#F4F1EB", color: "#7A7168", border: "#E4DDD2" };
 }
 
 function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMove, onBulkDelete, onAddSample, onCardClick, onQuickEdit, onSaveSample, onShowQR, onSelectionChange }) {
@@ -4136,12 +4139,12 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, margin: "0 2px 12px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: "#555" }}>Material readiness</span>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: "#5B564C" }}>Material readiness</span>
           {[['All','All'],['Ready','✓ Ready for Assembly'],['Missing','⚠ Missing Materials'],['Overdue','🔴 Overdue'],['No Plan','— No Material Plan']].map(([value,label]) => (
-            <button key={value} type="button" onClick={() => setFilterMaterialReadiness(value)} style={{ border: `1px solid ${filterMaterialReadiness === value ? '#FFB28F' : '#E5E7EB'}`, background: filterMaterialReadiness === value ? '#FFF3EC' : '#fff', color: filterMaterialReadiness === value ? '#C94E13' : '#666', borderRadius: 999, padding: '6px 10px', fontSize: 11, fontWeight: 750, cursor: 'pointer' }}>{label}</button>
+            <button key={value} type="button" onClick={() => setFilterMaterialReadiness(value)} style={{ border: `1px solid ${filterMaterialReadiness === value ? '#CBC6BC' : '#EDE8DE'}`, background: filterMaterialReadiness === value ? '#FCF7ED' : '#FFFFFF', color: filterMaterialReadiness === value ? '#726D63' : '#6C675D', borderRadius: 999, padding: '6px 10px', fontSize: 11, fontWeight: 750, cursor: 'pointer' }}>{label}</button>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#777" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#7D786E" }}>
           <span>Showing {readinessFilteredSamples.length} of {samples.length}</span>
         </div>
       </div>
@@ -4149,21 +4152,21 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
           margin: "0 2px 12px", padding: "9px 12px", borderRadius: 13,
-          background: "#FFF7F2", border: "1px solid #FFD8C5", boxShadow: "0 4px 14px rgba(220,198,169,.06)"
+          background: "#FFFAF0", border: "1px solid #E7E2D8", boxShadow: "0 4px 14px rgba(185,114,46,.10)"
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#DCC6A9", color: "#fff", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9, background: "#B9722E", color: "#FFFFFF", fontSize: 12, fontWeight: 800 }}>{selectedVisibleIds.length}</span>
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#222" }}>products selected</div>
-              <div style={{ fontSize: 11, color: "#8A6A5A" }}>Drag any selected card to another column to move them together.</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#282319" }}>products selected</div>
+              <div style={{ fontSize: 11, color: "#787369" }}>Drag any selected card to another column to move them together.</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-            <button type="button" onClick={toggleSelectAll} style={{ border: "1px solid #E8D8D0", background: "#fff", color: "#5D504A", borderRadius: 10, padding: "7px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+            <button type="button" onClick={toggleSelectAll} style={{ border: "1px solid #E2DDD3", background: "#FFFFFF", color: "#59544A", borderRadius: 10, padding: "7px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
               {allVisibleSelected ? "Clear all" : "Select all"}
             </button>
-            <button type="button" onClick={() => setSelectedIds([])} style={{ border: "1px solid #E8D8D0", background: "#fff", color: "#5D504A", borderRadius: 10, padding: "7px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Clear</button>
-            <button type="button" onClick={bulkDelete} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #F1B6A0", background: "#FFF0EB", color: "#B63D0D", borderRadius: 10, padding: "7px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>
+            <button type="button" onClick={() => setSelectedIds([])} style={{ border: "1px solid #E2DDD3", background: "#FFFFFF", color: "#59544A", borderRadius: 10, padding: "7px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Clear</button>
+            <button type="button" onClick={bulkDelete} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #CBC6BC", background: "#FAF5EB", color: "#625D53", borderRadius: 10, padding: "7px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>
               <Trash2 size={14} /> Delete selected
             </button>
           </div>
@@ -4185,24 +4188,24 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               className="sample-kanban-column"
               style={{
                 background: "#FFFFFF",
-                border: `1px solid ${isOver ? "#DCC6A9" : "#E3DED7"}`,
+                border: `1px solid ${isOver ? "#B9722E" : "#E7DFD4"}`,
                 borderRadius: 14, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
-                boxShadow: isOver ? "0 0 0 2px rgba(220,198,169,.22), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
+                boxShadow: isOver ? "0 0 0 2px rgba(185,114,46,.28), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
               }}
             >
-              <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #E5E7EA", display: "flex", flexDirection: "column", gap: 10, background: "#F5EFE7" }}>
+              <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid #EDE8DE", display: "flex", flexDirection: "column", gap: 10, background: "#F6F1E7" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <span style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, background: "#F5EFE7", color: "#6F6254", fontSize: 10.5, fontWeight: 800, flexShrink: 0, border: "1px solid #E0E3E7" }}>{String(stageIndex + 1).padStart(2, "0")}</span>
+                    <span style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, background: "#F6F1E7", color: "#6A655B", fontSize: 10.5, fontWeight: 800, flexShrink: 0, border: "1px solid #E9E4DA" }}>{String(stageIndex + 1).padStart(2, "0")}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "#5E5144", lineHeight: 1.2, whiteSpace: "nowrap" }}>{stage}</div>
-                      <div style={{ fontSize: 10.5, color: "#7A8189", marginTop: 3 }}>Step {stageIndex + 1} · {Math.round(completion * 100)}% flow</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: "#59544A", lineHeight: 1.2, whiteSpace: "nowrap" }}>{stage}</div>
+                      <div style={{ fontSize: 10.5, color: "#868177", marginTop: 3 }}>Step {stageIndex + 1} · {Math.round(completion * 100)}% flow</div>
                     </div>
                   </div>
-                  <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#555C64", background: "#F8F6F2", borderRadius: 999, border: "1px solid #E0E3E7", fontWeight: 800 }}>{cards.length}</span>
+                  <span style={{ flexShrink: 0, minWidth: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#615C52", background: "#FCF7ED", borderRadius: 999, border: "1px solid #E9E4DA", fontWeight: 800 }}>{cards.length}</span>
                 </div>
-                <div style={{ height: 3, borderRadius: 99, background: "#E7E9EC", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#DCC6A9" : "#C9CDD2" }} />
+                <div style={{ height: 3, borderRadius: 99, background: "#EFEAE0", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.max(8, completion * 100)}%`, height: "100%", borderRadius: 99, background: completion > 0 ? "#3E9150" : "#D9D2C6" }} />
                 </div>
               </div>
 
@@ -4239,7 +4242,7 @@ function KanbanBoard({ samples, customerName, materialPreps, moveStage, onBulkMo
               <button
                 type="button"
                 onClick={() => onAddSample?.(stage)}
-                style={{ margin: "0 10px 10px", padding: "10px", borderRadius: 10, border: "1px solid #DDE1E5", background: "#FFFFFF", color: "#50575F", fontWeight: 750, fontSize: 11.5, textAlign: "center", cursor: "pointer", fontFamily: FONT_BODY, width: "calc(100% - 20px)" }}
+                style={{ margin: "0 10px 10px", padding: "10px", borderRadius: 10, border: "1px solid #E6E1D7", background: "#FFFFFF", color: "#5C574D", fontWeight: 750, fontSize: 11.5, textAlign: "center", cursor: "pointer", fontFamily: FONT_BODY, width: "calc(100% - 20px)" }}
               >
                 <span style={{ fontSize: 16, verticalAlign: -1, marginRight: 5 }}>＋</span> Add product
               </button>
@@ -4277,21 +4280,21 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
 
   if (quickEditing) {
     return (
-      <div className="sample-kanban-card" style={{ position: "relative", background: "#FFFFFF", border: `1px solid #DCC6A9`, borderRadius: 14, padding: 12, cursor: "default", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0, boxShadow: "0 0 0 2px rgba(220,198,169,.16), 0 8px 22px rgba(17,17,17,.05)" }}>
+      <div className="sample-kanban-card" style={{ position: "relative", background: "#FFFFFF", border: `1px solid #B9722E`, borderRadius: 14, padding: 12, cursor: "default", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0, boxShadow: "0 0 0 2px rgba(185,114,46,.18), 0 8px 22px rgba(17,17,17,.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#4D453D" }}>Quick edit product</div>
-          <span style={{ fontSize: 10.5, color: "#8A7B6B", fontWeight: 700 }}>{s.id}</span>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#4C473D" }}>Quick edit product</div>
+          <span style={{ fontSize: 10.5, color: "#847F75", fontWeight: 700 }}>{s.id}</span>
         </div>
-        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Product name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6A655B" }}>Product name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DED9CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 82px", gap: 7 }}>
-          <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>ERP No.<input value={draft.erpNo} onChange={(e) => setDraft({ ...draft, erpNo: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
-          <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Qty<input type="number" min="0" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
+          <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6A655B" }}>ERP No.<input value={draft.erpNo} onChange={(e) => setDraft({ ...draft, erpNo: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DED9CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
+          <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6A655B" }}>Qty<input type="number" min="0" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DED9CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 12.5, outline: "none" }} /></label>
         </div>
-        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Next action<input value={draft.nextAction} onChange={(e) => setDraft({ ...draft, nextAction: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
-        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6B6259" }}>Target date<input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DDD7CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6A655B" }}>Next action<input value={draft.nextAction} onChange={(e) => setDraft({ ...draft, nextAction: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DED9CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
+        <label style={{ display: "grid", gap: 4, fontSize: 10.5, fontWeight: 750, color: "#6A655B" }}>Target date<input type="date" value={draft.targetDate} onChange={(e) => setDraft({ ...draft, targetDate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ width: "100%", boxSizing: "border-box", padding: "8px 9px", border: "1px solid #DED9CF", borderRadius: 8, fontFamily: FONT_BODY, fontSize: 11.5, outline: "none" }} /></label>
         <div style={{ display: "flex", gap: 7, marginTop: 2 }}>
-          <button type="button" onClick={saveQuickEdit} style={{ flex: 1, border: "1px solid #B79F80", background: "#DCC6A9", color: "#fff", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Save</button>
-          <button type="button" onClick={cancelQuickEdit} style={{ flex: 1, border: "1px solid #DDD7CF", background: "#fff", color: "#5F5851", borderRadius: 9, padding: "8px 10px", fontWeight: 750, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Cancel</button>
+          <button type="button" onClick={saveQuickEdit} style={{ flex: 1, border: "1px solid #8C551F", background: "#B9722E", color: "#FFFFFF", borderRadius: 9, padding: "8px 10px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Save</button>
+          <button type="button" onClick={cancelQuickEdit} style={{ flex: 1, border: "1px solid #DED9CF", background: "#FFFFFF", color: "#5F5A50", borderRadius: 9, padding: "8px 10px", fontWeight: 750, fontSize: 11.5, cursor: "pointer", fontFamily: FONT_BODY }}>Cancel</button>
         </div>
       </div>
     );
@@ -4313,30 +4316,30 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
         flexDirection: "column",
         flexShrink: 0,
         gap: 9,
-        boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(220,198,169,.10)` : "0 2px 8px rgba(17,17,17,.035)",
+        boxShadow: selected ? `0 0 0 2px ${theme.soft}, 0 8px 22px rgba(185,114,46,.14)` : "0 2px 8px rgba(17,17,17,.035)",
         overflow: "hidden",
         opacity: isDragging ? 0.58 : 1,
       }}
     >
-      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#DCC6A9" : "#E4E7EA" }} />
+      <div style={{ position: "absolute", left: 0, top: 14, bottom: 14, width: 2, borderRadius: "0 3px 3px 0", background: selected ? "#B9722E" : "#E7DFD4" }} />
       <button
         type="button"
         aria-label={selected ? `Deselect ${s.name || s.id}` : `Select ${s.name || s.id}`}
         onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
         onMouseDown={(e) => e.stopPropagation()}
         draggable={false}
-        style={{ position: "absolute", top: 9, left: 9, zIndex: 3, width: 24, height: 24, padding: 0, borderRadius: 7, border: `1px solid ${selected ? theme.accent : "#D9DDE2"}`, background: selected ? theme.accent : "rgba(255,255,255,.92)", color: selected ? "#fff" : "#8B9299", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 7px rgba(17,17,17,.08)" }}
+        style={{ position: "absolute", top: 9, left: 9, zIndex: 3, width: 24, height: 24, padding: 0, borderRadius: 7, border: `1px solid ${selected ? theme.accent : "#E2DDD3"}`, background: selected ? theme.accent : "rgba(255,255,255,.92)", color: selected ? "#FFFFFF" : "#979288", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 7px rgba(17,17,17,.08)" }}
       >
         {selected ? <CheckSquare size={14} /> : <Square size={14} />}
       </button>
       <div style={{ display: "flex", gap: 11, minWidth: 0 }}>
-        <div onClick={onClick} style={{ position: "relative", width: 70, height: 70, borderRadius: 11, marginLeft: 26, background: "#F6F4F1", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: "1px solid #E4E0DA" }}>
+        <div onClick={onClick} style={{ position: "relative", width: 70, height: 70, borderRadius: 11, marginLeft: 26, background: "#FAF5EB", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: "1px solid #E7E2D8" }}>
           {s.image ? (
             <img src={s.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; }} />
           ) : (
             <ImageIcon size={19} color={theme.head} opacity={0.5} />
           )}
-          {ot !== null && <div style={{ position: "absolute", bottom: 4, right: 4, width: 9, height: 9, borderRadius: "50%", background: ot ? COLORS.green : COLORS.red, border: "1.5px solid #fff" }} title={ot ? "On time" : "Late"} />}
+          {ot !== null && <div style={{ position: "absolute", bottom: 4, right: 4, width: 9, height: 9, borderRadius: "50%", background: ot ? COLORS.green : COLORS.red, border: "1.5px solid #FFFFFF" }} title={ot ? "On time" : "Late"} />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }} onClick={onClick}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
@@ -4357,9 +4360,9 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <span className="kanban-pill" style={{ color: "#4F565E", background: "#F1F3F5", border: "1px solid #E1E4E8" }}>{s.productTypeName || s.productType || "Product"}</span>
-        <span className="kanban-pill" style={{ color: "#686D73", background: "#F3F4F6" }}>Qty {s.quantity ?? s.qty ?? 1}</span>
-        {s.priority && <span className="kanban-pill" style={{ color: s.priority === "Urgent" ? "#806A51" : "#686D73", background: s.priority === "Urgent" ? "#FCE2D7" : "#F3F4F6" }}>{s.priority}</span>}
+        <span className="kanban-pill" style={{ color: "#5B564C", background: "#F9F4EA", border: "1px solid #EAE5DB" }}>{s.productTypeName || s.productType || "Product"}</span>
+        <span className="kanban-pill" style={{ color: "#726D63", background: "#FAF5EB" }}>Qty {s.quantity ?? s.qty ?? 1}</span>
+        {s.priority && <span className="kanban-pill" style={{ color: s.priority === "Urgent" ? "#746F65" : "#726D63", background: s.priority === "Urgent" ? "#EFEAE0" : "#FAF5EB" }}>{s.priority}</span>}
       </div>
 
       {materialReadiness && materialReadiness.total > 0 && (() => {
@@ -4377,7 +4380,7 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
               {materialReadiness.status === "Ready" ? "✓ Ready for Assembly" : `⚠ Missing ${materialReadiness.missing.length} material${materialReadiness.missing.length === 1 ? "" : "s"}`}
             </div>
             {materialReadiness.missing.length > 0 && (
-              <div style={{ marginTop: 3, fontSize: 10, color: "#777", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={materialReadiness.missing.map((m) => m.materialName || "Material").join(", ")}>
+              <div style={{ marginTop: 3, fontSize: 10, color: "#7D786E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={materialReadiness.missing.map((m) => m.materialName || "Material").join(", ")}>
                 {materialReadiness.missing.slice(0, 2).map((m) => m.materialName || "Material").join(", ")}{materialReadiness.missing.length > 2 ? ` +${materialReadiness.missing.length - 2}` : ""}
               </div>
             )}
@@ -4386,16 +4389,16 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
       })()}
 
       <div style={{ paddingTop: 1, display: "grid", gap: 4 }}>
-        {s.manufacturingOrderNo && <div className="kanban-meta" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><span style={{ fontWeight: 650, color: "#555" }}>MO</span> · {s.manufacturingOrderNo}</div>}
-        <div className="kanban-meta" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><span style={{ fontWeight: 650, color: "#555" }}>Next</span> · {s.nextAction || "Follow up / update"}</div>
-        {s.targetDate && <div className="kanban-meta"><span style={{ fontWeight: 650, color: "#555" }}>Target</span> · {s.targetDate}</div>}
+        {s.manufacturingOrderNo && <div className="kanban-meta" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><span style={{ fontWeight: 650, color: "#5B564C" }}>MO</span> · {s.manufacturingOrderNo}</div>}
+        <div className="kanban-meta" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><span style={{ fontWeight: 650, color: "#5B564C" }}>Next</span> · {s.nextAction || "Follow up / update"}</div>
+        {s.targetDate && <div className="kanban-meta"><span style={{ fontWeight: 650, color: "#5B564C" }}>Target</span> · {s.targetDate}</div>}
       </div>
 
       <select
         value={stage}
         onChange={(e) => onMoveStage(e.target.value)}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", fontSize: 11.5, padding: "8px 10px", borderRadius: 10, border: "1px solid #E1E4E8", background: "#F8F9FA", color: "#3F464D", fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
+        style={{ width: "100%", fontSize: 11.5, padding: "8px 10px", borderRadius: 10, border: "1px solid #EAE5DB", background: "#FFFAF0", color: "#4B463C", fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
       >
         {SAMPLE_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
       </select>
@@ -4410,7 +4413,7 @@ function samplePublicUrl(sampleId) {
 
 function PublicSampleLoading() {
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.inkSoft, padding: 24 }}>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#FDF8EE", fontFamily: FONT_BODY, color: COLORS.inkSoft, padding: 24 }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontWeight: 800, color: COLORS.wood, marginBottom: 6 }}>TÂN HÒA ERP</div>
         Loading product information…
@@ -4421,8 +4424,8 @@ function PublicSampleLoading() {
 
 function PublicSampleError({ message }) {
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#F6F7F9", fontFamily: FONT_BODY, padding: 24 }}>
-      <div style={{ maxWidth: 460, width: "100%", background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 26, textAlign: "center", boxShadow: "0 8px 30px rgba(17,17,17,.06)" }}>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#FDF8EE", fontFamily: FONT_BODY, padding: 24 }}>
+      <div style={{ maxWidth: 460, width: "100%", background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 26, textAlign: "center", boxShadow: "0 8px 30px rgba(17,17,17,.06)" }}>
         <div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div>
         <h1 style={{ fontSize: 21, margin: "8px 0" }}>Product unavailable</h1>
         <div style={{ color: COLORS.inkSoft, lineHeight: 1.55 }}>{message}</div>
@@ -4431,7 +4434,7 @@ function PublicSampleError({ message }) {
   );
 }
 
-function ProductQuickViewPublic({ data }) {
+function SampleQuickViewPublic({ data }) {
   const sample = data || {};
   const url = samplePublicUrl(sample.id);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -4451,18 +4454,18 @@ function ProductQuickViewPublic({ data }) {
   }, [sample.id]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.ink, padding: "18px 14px 44px" }}>
+    <div style={{ minHeight: "100vh", background: "#FDF8EE", fontFamily: FONT_BODY, color: COLORS.ink, padding: "18px 14px 44px" }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div>
           <div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Digital Product Passport</div>
         </div>
 
-        <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 20, overflow: "hidden", boxShadow: "0 10px 35px rgba(17,17,17,.07)" }}>
+        <div style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 20, overflow: "hidden", boxShadow: "0 10px 35px rgba(17,17,17,.07)" }}>
           {sample.image ? (
-            <img src={sample.image} alt={sample.name || sample.id} style={{ width: "100%", height: "min(42vw, 340px)", minHeight: 210, objectFit: "contain", background: "#F0F1EC" }} />
+            <img src={sample.image} alt={sample.name || sample.id} style={{ width: "100%", height: "min(42vw, 340px)", minHeight: 210, objectFit: "contain", background: "#F6F1E7" }} />
           ) : (
-            <div style={{ height: 240, display: "grid", placeItems: "center", background: "#F0F1EC", color: COLORS.inkSoft }}><ImageIcon size={40}/></div>
+            <div style={{ height: 240, display: "grid", placeItems: "center", background: "#F6F1E7", color: COLORS.inkSoft }}><ImageIcon size={40}/></div>
           )}
 
           <div style={{ padding: "22px clamp(18px, 4vw, 30px) 28px" }}>
@@ -4508,7 +4511,7 @@ function ProductQuickViewPublic({ data }) {
             </div>
           </div>
         </div>
-        <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#8A8F96" }}>Tân Hòa Outdoor Furniture · Digital Product Passport · Read-only</div>
+        <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#948F85" }}>Tân Hòa Outdoor Furniture · Digital Product Passport · Read-only</div>
       </div>
 
       {previewImage?.url && (
@@ -4519,7 +4522,7 @@ function ProductQuickViewPublic({ data }) {
           onClick={() => setPreviewImage(null)}
           style={{ position: "fixed", inset: 0, zIndex: 120, background: "rgba(17,17,17,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}
         >
-          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "min(92vw, 900px)", maxHeight: "90vh", background: "#fff", borderRadius: 16, padding: 10, boxShadow: "0 24px 80px rgba(0,0,0,.35)", cursor: "default" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "min(92vw, 900px)", maxHeight: "90vh", background: "#FFFFFF", borderRadius: 16, padding: 10, boxShadow: "0 24px 80px rgba(0,0,0,.35)", cursor: "default" }}>
             <img src={previewImage.url} alt={previewImage.alt || "Material reference"} style={{ display: "block", maxWidth: "calc(92vw - 20px)", maxHeight: "calc(90vh - 20px)", width: "auto", height: "auto", objectFit: "contain", borderRadius: 10 }} />
             <button type="button" onClick={() => setPreviewImage(null)} aria-label="Close image" style={{ position: "absolute", top: 18, right: 18, width: 34, height: 34, border: "none", borderRadius: 10, background: "rgba(255,255,255,.94)", cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 4px 14px rgba(0,0,0,.15)" }}><X size={17}/></button>
           </div>
@@ -4535,14 +4538,14 @@ function PassportSectionTitle({ children }) {
 
 function PassportField({ label, value, image, onImageClick }) {
   return (
-    <div style={{ padding: "10px 11px", borderRadius: 10, background: "#FBFBFC", border: `1px solid ${COLORS.line}`, minWidth: 0 }}>
+    <div style={{ padding: "10px 11px", borderRadius: 10, background: "#FFFCF2", border: `1px solid ${COLORS.line}`, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 10.5, color: COLORS.inkSoft }}>{label}</div>
           <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 700, overflowWrap: "anywhere" }}>{value || "—"}</div>
         </div>
         {image && (
-          <button type="button" onClick={() => onImageClick?.({ url: image, alt: `${label} reference` })} title="View reference image" aria-label={`View ${label} reference image`} style={{ flexShrink: 0, border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 7, padding: 2, cursor: "zoom-in" }}>
+          <button type="button" onClick={() => onImageClick?.({ url: image, alt: `${label} reference` })} title="View reference image" aria-label={`View ${label} reference image`} style={{ flexShrink: 0, border: `1px solid ${COLORS.line}`, background: "#FFFFFF", borderRadius: 7, padding: 2, cursor: "zoom-in" }}>
             <img src={image} alt="" style={{ width: 54, height: 44, objectFit: "cover", borderRadius: 5, display: "block" }} />
           </button>
         )}
@@ -4552,21 +4555,21 @@ function PassportField({ label, value, image, onImageClick }) {
 }
 
 function PassportChip({ label, value }) {
-  return <div style={{ padding: "7px 9px", borderRadius: 9, background: "#fff", border: `1px solid ${COLORS.line}`, fontSize: 11.5 }}><span style={{ color: COLORS.inkSoft }}>{label}</span><span style={{ fontWeight: 800, marginLeft: 6, overflowWrap: "anywhere" }}>{value}</span></div>;
+  return <div style={{ padding: "7px 9px", borderRadius: 9, background: "#FFFFFF", border: `1px solid ${COLORS.line}`, fontSize: 11.5 }}><span style={{ color: COLORS.inkSoft }}>{label}</span><span style={{ fontWeight: 800, marginLeft: 6, overflowWrap: "anywhere" }}>{value}</span></div>;
 }
 
 function PublicStat({ label, value }) {
   return <div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>{label}</div><div style={{ fontWeight: 800, marginTop: 4, overflowWrap: "anywhere" }}>{value || "—"}</div></div>;
 }
 
-function ProductQRModal({ sample, customerName, onClose }) {
+function SampleQRModal({ sample, customerName, onClose }) {
   const canvasRef = useRef(null);
   const [dataUrl, setDataUrl] = useState("");
   const url = samplePublicUrl(sample.id);
 
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(url, { width: 300, margin: 2, errorCorrectionLevel: "M", color: { dark: "#111111", light: "#FFFFFF" } })
+    QRCode.toDataURL(url, { width: 300, margin: 2, errorCorrectionLevel: "M", color: { dark: "#171208", light: "#FFFFFF" } })
       .then((value) => { if (active) setDataUrl(value); })
       .catch((err) => console.error("QR generation failed", err));
     return () => { active = false; };
@@ -4583,14 +4586,14 @@ function ProductQRModal({ sample, customerName, onClose }) {
     if (!dataUrl) return;
     const w = window.open("", "_blank", "width=520,height=700");
     if (!w) return;
-    w.document.write(`<html><head><title>${sample.id} QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:30px"><div style="font-size:18px;font-weight:700">Tân Hòa — ${sample.name || sample.id}</div><div style="color:#666;margin:8px 0 18px">${sample.erpNo || sample.id}</div><img src="${dataUrl}" style="width:300px;height:300px"/><div style="margin-top:14px;font-weight:700">Scan for latest product information</div></body></html>`);
+    w.document.write(`<html><head><title>${sample.id} QR</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:30px"><div style="font-size:18px;font-weight:700">Tân Hòa — ${sample.name || sample.id}</div><div style="color:#6C675D;margin:8px 0 18px">${sample.erpNo || sample.id}</div><img src="${dataUrl}" style="width:300px;height:300px"/><div style="margin-top:14px;font-weight:700">Scan for latest product information</div></body></html>`);
     w.document.close(); w.focus(); setTimeout(() => w.print(), 150);
   };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(17,17,17,.48)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 100%)", background: "#fff", borderRadius: 20, border: `1px solid ${COLORS.line}`, boxShadow: "0 24px 70px rgba(17,17,17,.22)", padding: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>Product QR Code</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Permanent QR for the latest product information.</div></div><button type="button" onClick={onClose} style={{ border: "none", background: "#F4F5F6", borderRadius: 10, width: 34, height: 34, cursor: "pointer" }}><X size={16}/></button></div>
-        <div style={{ margin: "20px auto 16px", width: 320, maxWidth: "100%", padding: 10, borderRadius: 16, background: "#fff", border: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "center" }}>{dataUrl ? <img ref={canvasRef} src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: 300, height: 300, imageRendering: "pixelated" }} /> : <div style={{ width: 300, height: 300, display: "grid", placeItems: "center", color: COLORS.inkSoft }}>Generating QR…</div>}</div>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 100%)", background: "#FFFFFF", borderRadius: 20, border: `1px solid ${COLORS.line}`, boxShadow: "0 24px 70px rgba(17,17,17,.22)", padding: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>Product QR Code</div><div style={{ marginTop: 4, fontSize: 12.5, color: COLORS.inkSoft }}>Permanent QR for the latest product information.</div></div><button type="button" onClick={onClose} style={{ border: "none", background: "#FBF6EC", borderRadius: 10, width: 34, height: 34, cursor: "pointer" }}><X size={16}/></button></div>
+        <div style={{ margin: "20px auto 16px", width: 320, maxWidth: "100%", padding: 10, borderRadius: 16, background: "#FFFFFF", border: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "center" }}>{dataUrl ? <img ref={canvasRef} src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: 300, height: 300, imageRendering: "pixelated" }} /> : <div style={{ width: 300, height: 300, display: "grid", placeItems: "center", color: COLORS.inkSoft }}>Generating QR…</div>}</div>
         <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800 }}>{sample.name || "Unnamed product"}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3 }}>{sample.id} · {sample.erpNo || "No ERP code"} · {customerName || "—"}</div></div>
         <div style={{ marginTop: 12, padding: 10, background: COLORS.bg, borderRadius: 10, fontSize: 11.5, color: COLORS.inkSoft, overflowWrap: "anywhere" }}>{url}</div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={print} disabled={!dataUrl}>Print</Button><Button small onClick={onClose}>Close</Button></div>
@@ -4600,18 +4603,18 @@ function ProductQRModal({ sample, customerName, onClose }) {
 }
 
 
-function ProductQRInline({ sample, compact = false }) {
+function SampleQRInline({ sample, compact = false }) {
   const [dataUrl, setDataUrl] = useState("");
   const url = samplePublicUrl(sample.id);
   useEffect(() => { QRCode.toDataURL(url, { width: compact ? 120 : 220, margin: 1, errorCorrectionLevel: "M" }).then(setDataUrl).catch(() => {}); }, [url, compact]);
   const download = () => { if (!dataUrl) return; const a = document.createElement("a"); a.href = dataUrl; a.download = `${sample.id}-QR.png`; a.click(); };
-  return <div style={{ padding: compact ? 12 : 16, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: "#fff", display: "flex", alignItems: "center", gap: 14 }}>
-    <div style={{ width: compact ? 126 : 230, height: compact ? 126 : 230, flexShrink: 0, display: "grid", placeItems: "center", background: "#fff", borderRadius: 10 }}>{dataUrl ? <img src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: compact ? 120 : 220, height: compact ? 120 : 220, imageRendering: "pixelated" }} /> : <span style={{ fontSize: 11, color: COLORS.inkSoft }}>Generating…</span>}</div>
+  return <div style={{ padding: compact ? 12 : 16, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: "#FFFFFF", display: "flex", alignItems: "center", gap: 14 }}>
+    <div style={{ width: compact ? 126 : 230, height: compact ? 126 : 230, flexShrink: 0, display: "grid", placeItems: "center", background: "#FFFFFF", borderRadius: 10 }}>{dataUrl ? <img src={dataUrl} alt={`QR for ${sample.id}`} style={{ width: compact ? 120 : 220, height: compact ? 120 : 220, imageRendering: "pixelated" }} /> : <span style={{ fontSize: 11, color: COLORS.inkSoft }}>Generating…</span>}</div>
     <div style={{ minWidth: 0 }}><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: .7, textTransform: "uppercase" }}>Product QR</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.id}</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>Scan to view the latest product information.</div><div style={{ display: "flex", gap: 7, marginTop: 12 }}><Button small variant="subtle" onClick={download} disabled={!dataUrl}><Download size={13}/> Download</Button><Button small variant="subtle" onClick={() => window.print()}>Print</Button></div></div>
   </div>;
 }
 
-function ProductQuickView({ sample, customerName, productTypeName, materialLists = {}, materialPreps }) {
+function SampleQuickView({ sample, customerName, productTypeName, materialLists = {}, materialPreps }) {
   const readiness = getMaterialReadiness(sample, materialPreps);
   const missing = readiness.missing || [];
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -4619,16 +4622,16 @@ function ProductQuickView({ sample, customerName, productTypeName, materialLists
   useEffect(() => { QRCode.toDataURL(url, { width: 160, margin: 1, errorCorrectionLevel: "M" }).then(setQrDataUrl).catch(() => {}); }, [url]);
   const back = () => { window.location.href = window.location.pathname; };
   return (
-    <div style={{ minHeight: "100vh", background: "#F6F7F9", fontFamily: FONT_BODY, color: COLORS.ink, padding: "18px 14px 40px" }}>
+    <div style={{ minHeight: "100vh", background: "#FDF8EE", fontFamily: FONT_BODY, color: COLORS.ink, padding: "18px 14px 40px" }}>
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Product Quick View</div></div><button type="button" onClick={back} style={{ border: `1px solid ${COLORS.line}`, background: "#fff", borderRadius: 10, padding: "8px 11px", cursor: "pointer" }}>Back to ERP</button></div>
-        <div style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 18, overflow: "hidden", boxShadow: "0 8px 30px rgba(17,17,17,.06)" }}>
-          {sample.image ? <img src={sample.image} alt={sample.name} style={{ width: "100%", maxHeight: 300, objectFit: "contain", background: "#F0F1EC" }} /> : <div style={{ height: 180, display: "grid", placeItems: "center", background: "#F0F1EC", color: COLORS.inkSoft }}><ImageIcon size={34}/></div>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div><div style={{ fontSize: 12, color: COLORS.wood, fontWeight: 800, letterSpacing: 1.1 }}>TÂN HÒA ERP</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>Product Quick View</div></div><button type="button" onClick={back} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", borderRadius: 10, padding: "8px 11px", cursor: "pointer" }}>Back to ERP</button></div>
+        <div style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 18, overflow: "hidden", boxShadow: "0 8px 30px rgba(17,17,17,.06)" }}>
+          {sample.image ? <img src={sample.image} alt={sample.name} style={{ width: "100%", maxHeight: 300, objectFit: "contain", background: "#F6F1E7" }} /> : <div style={{ height: 180, display: "grid", placeItems: "center", background: "#F6F1E7", color: COLORS.inkSoft }}><ImageIcon size={34}/></div>}
           <div style={{ padding: 20 }}>
             <div style={{ fontSize: 12, color: COLORS.inkSoft }}>{sample.id}</div><h1 style={{ fontSize: 24, margin: "5px 0 4px", letterSpacing: "-.5px" }}>{sample.name || "Unnamed product"}</h1><div style={{ color: COLORS.inkSoft, fontSize: 13 }}>{customerName || "—"} · {productTypeName || "Product"}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>ERP No.</div><div style={{ fontWeight: 800, marginTop: 4, overflowWrap: "anywhere" }}>{sample.erpNo || "—"}</div></div><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Current stage</div><div style={{ fontWeight: 800, marginTop: 4 }}>{normalizeSampleWorkflowStage(sample.stage)}</div></div></div>
             <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Target date</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.targetDate || "—"}</div></div><div style={{ background: COLORS.bg, borderRadius: 12, padding: 12 }}><div style={{ fontSize: 11, color: COLORS.inkSoft }}>Next action</div><div style={{ fontWeight: 800, marginTop: 4 }}>{sample.nextAction || "—"}</div></div></div>
-            <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: readiness.status === "Ready" ? "#EAF7EE" : readiness.status === "Blocked" ? "#FFF0EC" : "#FFF4E5", border: `1px solid ${readiness.status === "Ready" ? "#BFE5CB" : readiness.status === "Blocked" ? "#F2C0B1" : "#F4D09D"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800 }}><span>Material readiness</span><span>{readiness.done}/{readiness.total}</span></div><div style={{ height: 7, background: "rgba(255,255,255,.75)", borderRadius: 99, marginTop: 8, overflow: "hidden" }}><div style={{ width: `${readiness.percent}%`, height: "100%", background: readiness.status === "Ready" ? COLORS.green : COLORS.wood, borderRadius: 99 }} /></div>{missing.length > 0 && <div style={{ marginTop: 9, fontSize: 12.5 }}>Missing: {missing.map((m) => m.materialName || "Material").join(", ")}</div>}</div>
+            <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: readiness.status === "Ready" ? "#F8F3E9" : readiness.status === "Blocked" ? "#FAF5EB" : "#FCF7ED", border: `1px solid ${readiness.status === "Ready" ? "#DDD8CE" : readiness.status === "Blocked" ? "#D3CEC4" : "#DBD6CC"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800 }}><span>Material readiness</span><span>{readiness.done}/{readiness.total}</span></div><div style={{ height: 7, background: "rgba(255,255,255,.75)", borderRadius: 99, marginTop: 8, overflow: "hidden" }}><div style={{ width: `${readiness.percent}%`, height: "100%", background: readiness.status === "Ready" ? COLORS.green : COLORS.wood, borderRadius: 99 }} /></div>{missing.length > 0 && <div style={{ marginTop: 9, fontSize: 12.5 }}>Missing: {missing.map((m) => m.materialName || "Material").join(", ")}</div>}</div>
             <div style={{ marginTop: 18 }}><div style={{ fontSize: 12, fontWeight: 800, color: COLORS.wood, textTransform: "uppercase", letterSpacing: .7 }}>Key specifications</div><div style={{ marginTop: 6 }}><DetailRow label="Main material" value={lookupName(materialLists.mainMaterials || [], sample.mainMaterialId)}/><DetailRow label="Finish / color" value={lookupName(materialLists.finishes || [], sample.finishesColorId)}/><DetailRow label="Rope" value={lookupName(materialLists.ropeTypes || [], sample.ropeTypeId)}/><DetailRow label="Construction" value={sample.construction || ""}/><DetailRow label="Dimensions" value={[sample.width,sample.depth,sample.height].some(v=>v!==""&&v!=null) ? `${sample.width||"—"} × ${sample.depth||"—"} × ${sample.height||"—"} mm` : ""}/></div></div>
             <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${COLORS.line}`, display: "flex", alignItems: "center", gap: 16 }}><div style={{ flex: 1 }}><div style={{ fontWeight: 800 }}>Scan QR anytime</div><div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 4 }}>This QR always opens the latest ERP information for this product.</div></div>{qrDataUrl && <img src={qrDataUrl} alt="Product QR" style={{ width: 110, height: 110 }} />}</div>
           </div>
@@ -4648,7 +4651,7 @@ function DetailRow({ label, value }) {
   );
 }
 
-function ProductDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR }) {
+function SampleDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR }) {
   const { mainMaterials = [], finishes = [], woodSurface = [], fabricTypes = [], fabricColors = [], ropeTypes = [], ropeColors = [], cemboardColors = [] } = materialLists;
   const dims = [s.width, s.depth, s.height].filter((v) => v !== "" && v != null).length ? `${s.width || "—"} × ${s.depth || "—"} × ${s.height || "—"} mm` : "";
   const ot = sampleOnTime(s);
@@ -4735,7 +4738,7 @@ function ProductDetail({ sample: s, customerName, productTypeName, materialLists
         <div>
           <SectionHeading>Materials & finishes</SectionHeading>
           <DetailRow label="Main material" value={lookupName(mainMaterials, s.mainMaterialId)} /><DetailRow label="Finish / color" value={lookupName(finishes, s.finishesColorId)} /><DetailRow label="Wood surface" value={lookupName(woodSurface, s.woodSurfaceTreatmentId)} /><DetailRow label="Fabric type" value={lookupName(fabricTypes, s.fabricTypeId)} /><DetailRow label="Fabric color" value={lookupName(fabricColors, s.fabricColorId)} /><DetailRow label="Rope type" value={lookupName(ropeTypes, s.ropeTypeId)} /><DetailRow label="Rope diameter" value={s.ropeDiameter} /><DetailRow label="Rope color" value={lookupName(ropeColors, s.ropeColorId)} /><DetailRow label="Metal name" value={s.metalName} /><DetailRow label="Metal color" value={s.metalColor} /><DetailRow label="Cemboard color" value={lookupName(cemboardColors, s.cemboardColorId)} /><DetailRow label="Hardware" value={s.hardware} /><DetailRow label="Construction" value={s.construction} /><DetailRow label="Revision" value={s.currentRevision} />
-          <div style={{ marginTop: 16 }}><ProductQRInline sample={s} compact /></div>
+          <div style={{ marginTop: 16 }}><SampleQRInline sample={s} compact /></div>
         </div>
         <div>
           <SectionHeading>Production & stage</SectionHeading>
@@ -4756,7 +4759,7 @@ function ProductDetail({ sample: s, customerName, productTypeName, materialLists
                 <Input type="date" value={c.targetDate || ""} onChange={(e) => saveComponent(c, { targetDate: e.target.value })} style={{ fontSize: 12.5, padding: "5px 8px" }} />
                 <Select value={c.status || "Waiting"} onChange={(e) => saveComponent(c, { status: e.target.value, ...(e.target.value !== "Done" ? { photo: "" } : {}) })} style={{ fontSize: 12.5, padding: "5px 8px" }}>{PREP_STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st}</option>)}</Select>
                 {c.status === "Done" ? <div style={{ display: "flex", gap: 6, alignItems: "center" }}><input id={`proof-${c.id}`} type="file" accept="image/*" onChange={(e) => uploadProof(c, e)} style={{ display: "none" }} /><Button small variant="subtle" onClick={() => document.getElementById(`proof-${c.id}`)?.click()} disabled={proofUploading === c.id}><ImageIcon size={13} /> {proofUploading === c.id ? "Processing…" : c.photo ? "Change" : "Upload"}</Button>{c.photo && <img src={c.photo} alt="Proof" style={{ width: 38, height: 38, objectFit: "cover", borderRadius: 6, border: `1px solid ${COLORS.line}` }} />}</div> : <span style={{ fontSize: 11.5, color: COLORS.inkSoft }}>Available when Done</span>}
-                <button type="button" title="Delete material" aria-label={`Delete ${c.name || "material"}`} onClick={() => deleteComponent(c)} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${COLORS.redSoft}`, background: "#FFF7F5", color: COLORS.red, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Trash2 size={15} /></button>
+                <button type="button" title="Delete material" aria-label={`Delete ${c.name || "material"}`} onClick={() => deleteComponent(c)} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${COLORS.redSoft}`, background: "#FFFAF0", color: COLORS.red, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Trash2 size={15} /></button>
               </div>
             ))}
           </div></div>
@@ -4927,13 +4930,13 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
   };
 
   const typeStyle = (e) => {
-    if (e.overdue) return { bg: "#FFF0EE", border: "#FFB7AE", text: "#B53B2D", accent: "#D94B4B", label: "OVERDUE" };
-    if (e.status === "Done" || e.status === "Completed") return { bg: "#EAF6EE", border: "#B8DFC4", text: "#32724A", accent: "#4C9A68", label: "DONE" };
-    if (e.type === "material") return { bg: "#F5EFE6", border: "#F4D3A7", text: "#9A5A2F", accent: "#C9B395", label: "MATERIAL" };
-    if (e.type === "sample") return { bg: "#F4EEE5", border: "#E4D6C4", text: "#8F755B", accent: "#DCC6A9", label: "PRODUCT" };
-    if (e.taskType === "Daily") return { bg: "#EEF2FF", border: "#AFC0FF", text: "#3159C7", accent: "#4267E8", label: "DAILY" };
-    if (e.taskType === "Product Test") return { bg: "#F3ECFF", border: "#CBB3FF", text: "#7040B5", accent: "#8B5CF6", label: "PRODUCT TEST" };
-    return { bg: "#F4EEE5", border: "#FFB98F", text: "#8F755B", accent: "#DCC6A9", label: "FOLLOW-UP" };
+    if (e.overdue) return { bg: "#FBEAE7", border: "#F0C6C0", text: "#96352A", accent: "#C84B3C", label: "OVERDUE" };
+    if (e.status === "Done" || e.status === "Completed") return { bg: "#E8F5EA", border: "#C2E1C7", text: "#256B34", accent: "#3E9150", label: "DONE" };
+    if (e.type === "material") return { bg: "#FCEEDA", border: "#EFD9AD", text: "#96650F", accent: "#D98F1F", label: "MATERIAL" };
+    if (e.type === "sample") return { bg: "#F5E7D5", border: "#E7CBA9", text: "#7A4E1E", accent: "#B9722E", label: "PRODUCT" };
+    if (e.taskType === "Daily") return { bg: "#E4EBF2", border: "#C9D7E3", text: "#35516F", accent: "#4F6E92", label: "DAILY" };
+    if (e.taskType === "Product Test") return { bg: "#ECE3F5", border: "#DCCCEC", text: "#56417A", accent: "#7B5EA8", label: "PRODUCT TEST" };
+    return { bg: "#E2F3F1", border: "#BEDEDA", text: "#1F6D65", accent: "#2E8B82", label: "FOLLOW-UP" };
   };
 
   const persistEventDate = (event, newDate) => {
@@ -4972,7 +4975,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
   // linked product.requiredComponents array is updated locally so Product Detail
   // reflects the change without requiring a page reload. When every material
   // for a product is Done, we also write a lightweight stage-status signal to
-  // the products table so the Sample record itself shows that materials are ready.
+  // the products table so the Product record itself shows that materials are ready.
   const syncMaterialToSample = (prepId, patch) => {
     const prep = materialPreps.find((p) => p.id === prepId);
     if (!prep) return;
@@ -5081,7 +5084,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: 3 }}>
-            {[['week','Week'], ['list','Agenda']].map(([k,l]) => <button key={k} onClick={() => setView(k)} style={{ border: "none", background: view === k ? COLORS.wood : "transparent", color: view === k ? "#fff" : COLORS.inkSoft, borderRadius: 8, padding: "7px 11px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{l}</button>)}
+            {[['week','Week'], ['list','Agenda']].map(([k,l]) => <button key={k} onClick={() => setView(k)} style={{ border: "none", background: view === k ? COLORS.wood : "transparent", color: view === k ? "#FFFFFF" : COLORS.inkSoft, borderRadius: 8, padding: "7px 11px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{l}</button>)}
           </div>
           <Button onClick={() => openCreateTask()}><Plus size={15} /> Create New Task</Button>
         </div>
@@ -5104,21 +5107,21 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       </div>
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: COLORS.inkSoft }}>
-        {[['#DCC6A9','Product'],['#C9B395','Material'],['#4267E8','Daily'],['#8B5CF6','Product Test'],['#D94B4B','Overdue'],['#4C9A68','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
+        {[['#B9722E','Product'],['#D98F1F','Material'],['#4F6E92','Daily'],['#7B5EA8','Product Test'],['#C84B3C','Overdue'],['#3E9150','Done']].map(([c,l]) => <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><i style={{ width: 8, height: 8, borderRadius: "50%", background: c, display: "inline-block" }} />{l}</span>)}
       </div>
 
       {view === "week" ? (
         <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,.035)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "190px repeat(7, minmax(0, 1fr))", borderBottom: `1px solid ${COLORS.line}` }}>
-            <div style={{ padding: "11px 14px", background: "#FAFAFA", borderRight: `1px solid ${COLORS.line}` }}><div style={{ fontSize: 10, fontWeight: 800, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: ".08em" }}>Planning board</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 3 }}>Drag & drop to reschedule</div></div>
-            {weekDays.map((d) => { const isToday = d.iso === today; const count = (eventsByDate[d.iso] || []).length; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: "8px 8px 9px", textAlign: "center", background: isToday ? COLORS.wood : "#FAFAFA", color: isToday ? "#fff" : COLORS.ink, outline: dragOverDate === d.iso ? `3px solid ${COLORS.wood}` : "none", outlineOffset: -3 }}><div style={{ fontSize: 10, fontWeight: 700, opacity: .78 }}>{d.date.toLocaleDateString("en-US", { weekday: "short" })}</div><div style={{ fontSize: 17, fontWeight: 850, lineHeight: 1.15 }}>{d.date.getDate()}</div><div style={{ fontSize: 9.5, opacity: .72 }}>{d.date.toLocaleDateString("en-US", { month: "short" })} · {count}</div></div>; })}
+            <div style={{ padding: "11px 14px", background: "#FFFBF1", borderRight: `1px solid ${COLORS.line}` }}><div style={{ fontSize: 10, fontWeight: 800, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: ".08em" }}>Planning board</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 3 }}>Drag & drop to reschedule</div></div>
+            {weekDays.map((d) => { const isToday = d.iso === today; const count = (eventsByDate[d.iso] || []).length; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: "8px 8px 9px", textAlign: "center", background: isToday ? COLORS.wood : "#FFFBF1", color: isToday ? "#FFFFFF" : COLORS.ink, outline: dragOverDate === d.iso ? `3px solid ${COLORS.wood}` : "none", outlineOffset: -3 }}><div style={{ fontSize: 10, fontWeight: 700, opacity: .78 }}>{d.date.toLocaleDateString("en-US", { weekday: "short" })}</div><div style={{ fontSize: 17, fontWeight: 850, lineHeight: 1.15 }}>{d.date.getDate()}</div><div style={{ fontSize: 9.5, opacity: .72 }}>{d.date.toLocaleDateString("en-US", { month: "short" })} · {count}</div></div>; })}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "190px repeat(7, minmax(0, 1fr))", minHeight: 450 }}>
-            <div style={{ background: "#FAFAFA", borderRight: `1px solid ${COLORS.line}` }}>
+            <div style={{ background: "#FFFBF1", borderRight: `1px solid ${COLORS.line}` }}>
               <div style={{ padding: 12, borderBottom: `1px solid ${COLORS.line}` }}><div style={{ fontSize: 12.5, fontWeight: 800 }}>Follow-up queue</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 3 }}>Items requiring attention</div><div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 13 }}>{overdue.slice(0, 5).map((e) => <button key={e.id} onClick={() => openEdit(e)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", fontSize: 10.5, display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.red }} /><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.label}</span></button>)}{!overdue.length && <div style={{ fontSize: 10.5, color: COLORS.green }}>No overdue items.</div>}</div></div>
               <div style={{ padding: 12 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: ".06em" }}>How it works</div><div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 10.2, color: COLORS.inkSoft }}><div>↕ Drag a card to another day</div><div>✎ Click a card to edit</div><div>✓ Mark work as Done</div></div></div>
             </div>
-            {weekDays.map((d) => { const dayEvents = eventsByDate[d.iso] || []; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: 7, borderRight: `1px solid ${COLORS.line}`, background: dragOverDate === d.iso ? "#F6F1E9" : (d.iso === today ? "#F8F5EF" : "#FFFFFF"), minWidth: 0, transition: "background .15s ease" }}><div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 430 }}>{dayEvents.slice(0, 8).map((e) => <EventCard key={e.id} e={e} compact />)}{dayEvents.length > 8 && <button onClick={() => setSelectedEvent({ date: d.iso, label: `${dayEvents.length - 8} more items`, type: "more", more: dayEvents.slice(8) })} style={{ border: "none", background: "transparent", color: COLORS.wood, fontWeight: 800, fontSize: 10.5, cursor: "pointer", padding: 4 }}>+ {dayEvents.length - 8} more</button>}{!dayEvents.length && <div style={{ flex: 1, minHeight: 120, border: dragOverDate === d.iso ? `2px dashed ${COLORS.wood}` : "1px dashed #E9EAED", borderRadius: 10, display: "grid", placeItems: "center", color: dragOverDate === d.iso ? COLORS.wood : "#B8BCC2", fontSize: 10.5 }}>{dragOverDate === d.iso ? "Drop here" : "No plan"}</div>}</div></div>; })}
+            {weekDays.map((d) => { const dayEvents = eventsByDate[d.iso] || []; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: 7, borderRight: `1px solid ${COLORS.line}`, background: dragOverDate === d.iso ? "#F8F3E9" : (d.iso === today ? "#FBF6EC" : "#FFFFFF"), minWidth: 0, transition: "background .15s ease" }}><div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 430 }}>{dayEvents.slice(0, 8).map((e) => <EventCard key={e.id} e={e} compact />)}{dayEvents.length > 8 && <button onClick={() => setSelectedEvent({ date: d.iso, label: `${dayEvents.length - 8} more items`, type: "more", more: dayEvents.slice(8) })} style={{ border: "none", background: "transparent", color: COLORS.wood, fontWeight: 800, fontSize: 10.5, cursor: "pointer", padding: 4 }}>+ {dayEvents.length - 8} more</button>}{!dayEvents.length && <div style={{ flex: 1, minHeight: 120, border: dragOverDate === d.iso ? `2px dashed ${COLORS.wood}` : "1px dashed #F0EBE1", borderRadius: 10, display: "grid", placeItems: "center", color: dragOverDate === d.iso ? COLORS.wood : "#C1BCB2", fontSize: 10.5 }}>{dragOverDate === d.iso ? "Drop here" : "No plan"}</div>}</div></div>; })}
           </div>
         </div>
       ) : (
@@ -5161,7 +5164,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
               {selectedEvent.type === "more" ? <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{selectedEvent.more.map((e) => <EventCard key={e.id} e={e} />)}</div> : <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Date</div><Input type="date" value={editing?.date || ""} onChange={(ev) => setEditing((x) => ({ ...x, date: ev.target.value }))} /></div>
-                  <div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Status</div><select value={editing?.status || ""} onChange={(ev) => setEditing((x) => ({ ...x, status: ev.target.value }))} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#fff", fontFamily: FONT_BODY, fontSize: 12.5 }}>{(selectedEvent.type === "task" ? TASK_STATUSES : selectedEvent.type === "material" ? ["Waiting","Pending","Done"] : ["Request Received","Material Preparation","Assembly","Quality Check","Customer Correction","Packaging","Shipping"]).map((v) => <option key={v}>{v}</option>)}</select></div>
+                  <div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Status</div><select value={editing?.status || ""} onChange={(ev) => setEditing((x) => ({ ...x, status: ev.target.value }))} style={{ width: "100%", marginTop: 5, padding: "9px 10px", border: `1px solid ${COLORS.line}`, borderRadius: 9, background: "#FFFFFF", fontFamily: FONT_BODY, fontSize: 12.5 }}>{(selectedEvent.type === "task" ? TASK_STATUSES : selectedEvent.type === "material" ? ["Waiting","Pending","Done"] : ["Request Received","Material Preparation","Assembly","Quality Check","Customer Correction","Packaging","Shipping"]).map((v) => <option key={v}>{v}</option>)}</select></div>
                 </div>
                 {(selectedEvent.type === "task" || selectedEvent.type === "sample") && <div style={{ marginTop: 10 }}><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Priority</div><Input value={editing?.priority || ""} onChange={(ev) => setEditing((x) => ({ ...x, priority: ev.target.value }))} placeholder="e.g. High Priority" /></div>}
                 {selectedEvent.type === "sample" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}><div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Waiting For</div><Input value={editing?.waitingFor || ""} onChange={(ev) => setEditing((x) => ({ ...x, waitingFor: ev.target.value }))} /></div><div><div style={{ fontSize: 10, color: COLORS.inkSoft }}>Next Action</div><Input value={editing?.nextAction || ""} onChange={(ev) => setEditing((x) => ({ ...x, nextAction: ev.target.value }))} /></div></div>}
@@ -5409,7 +5412,7 @@ function MaterialsView({ materialLists, saveList }) {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", borderBottom: `1px solid ${COLORS.line}`, paddingBottom: 10 }}>
         {MATERIAL_LIST_TABS.map((t) => (
-          <button key={t.key} onClick={() => { setActiveTab(t.key); setShowForm(false); setEditing(null); setSearch(""); }} style={{ padding: "7px 13px", borderRadius: 999, border: `1px solid ${activeTab === t.key ? COLORS.wood : COLORS.line}`, background: activeTab === t.key ? COLORS.wood : "#fff", color: activeTab === t.key ? "#fff" : COLORS.ink, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FONT_BODY }}>
+          <button key={t.key} onClick={() => { setActiveTab(t.key); setShowForm(false); setEditing(null); setSearch(""); }} style={{ padding: "7px 13px", borderRadius: 999, border: `1px solid ${activeTab === t.key ? COLORS.wood : COLORS.line}`, background: activeTab === t.key ? COLORS.wood : "#FFFFFF", color: activeTab === t.key ? "#FFFFFF" : COLORS.ink, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FONT_BODY }}>
             {t.label} <span style={{ opacity: 0.75 }}>({(materialLists[t.key] || []).length})</span>
           </button>
         ))}
@@ -5432,7 +5435,7 @@ function MaterialsView({ materialLists, saveList }) {
                 {editing.image && <img src={editing.image} alt="Reference" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 10, border: `1px solid ${COLORS.line}` }} />}
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 650, color: COLORS.inkSoft, marginBottom: 6 }}>Reference image</div>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 7, border: `1px solid ${COLORS.line}`, background: "#fff", color: COLORS.woodDark, borderRadius: 9, padding: "8px 11px", cursor: imageUploading ? "wait" : "pointer", fontSize: 12, fontWeight: 700 }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 7, border: `1px solid ${COLORS.line}`, background: "#FFFFFF", color: COLORS.woodDark, borderRadius: 9, padding: "8px 11px", cursor: imageUploading ? "wait" : "pointer", fontSize: 12, fontWeight: 700 }}>
                     <Upload size={14} /> {imageUploading ? "Uploading…" : editing.image ? "Change image" : "Upload image"}
                     <input type="file" accept="image/*" disabled={imageUploading} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; uploadReferenceImage(f); }} style={{ display: "none" }} />
                   </label>
@@ -5520,8 +5523,8 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
         <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Tasks</h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div style={{ display: "flex", border: `1px solid ${COLORS.line}`, borderRadius: 8, overflow: "hidden" }}>
-            <button onClick={() => setViewMode("kanban")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY, background: viewMode === "kanban" ? COLORS.wood : "#fff", color: viewMode === "kanban" ? "#fff" : COLORS.ink }}>Kanban</button>
-            <button onClick={() => setViewMode("list")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY, background: viewMode === "list" ? COLORS.wood : "#fff", color: viewMode === "list" ? "#fff" : COLORS.ink }}>List</button>
+            <button onClick={() => setViewMode("kanban")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY, background: viewMode === "kanban" ? COLORS.wood : "#FFFFFF", color: viewMode === "kanban" ? "#FFFFFF" : COLORS.ink }}>Kanban</button>
+            <button onClick={() => setViewMode("list")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY, background: viewMode === "list" ? COLORS.wood : "#FFFFFF", color: viewMode === "list" ? "#FFFFFF" : COLORS.ink }}>List</button>
           </div>
           <Button onClick={startNew}><Plus size={15} /> New task</Button>
         </div>
@@ -5530,7 +5533,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
       {showErpPicker && (
         <div
           onClick={() => setShowErpPicker(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(20,24,21,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}
+          style={{ position: "fixed", inset: 0, background: "rgba(22,22,22,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -5621,7 +5624,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
                     value={selectedSample?.erpNo || ""}
                     readOnly
                     placeholder="Search ERP Code..."
-                    style={{ flex: 1, cursor: "pointer", background: "#FAF8F4" }}
+                    style={{ flex: 1, cursor: "pointer", background: "#FEF9EF" }}
                     onClick={() => setShowErpPicker(true)}
                   />
                   <Button type="button" onClick={() => setShowErpPicker(true)} title="Search ERP Code">
@@ -5727,7 +5730,7 @@ function TaskKanbanBoard({ tasks, sampleLabel, moveStatus, onCardClick }) {
           >
             <div style={{ padding: "10px 12px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.woodDark }}>{status}</span>
-              <span style={{ fontSize: 11.5, color: COLORS.inkSoft, background: "#fff", borderRadius: 999, padding: "1px 8px", border: `1px solid ${COLORS.line}` }}>{cards.length}</span>
+              <span style={{ fontSize: 11.5, color: COLORS.inkSoft, background: "#FFFFFF", borderRadius: 999, padding: "1px 8px", border: `1px solid ${COLORS.line}` }}>{cards.length}</span>
             </div>
             <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", minHeight: 0, flex: 1 }}>
               {cards.map((t) => (
@@ -5736,7 +5739,7 @@ function TaskKanbanBoard({ tasks, sampleLabel, moveStatus, onCardClick }) {
                   draggable
                   onDragStart={(e) => { e.dataTransfer.setData("text/task-id", t.id); setDraggingId(t.id); }}
                   onDragEnd={() => setDraggingId(null)}
-                  style={{ background: "#fff", border: `1px solid ${COLORS.line}`, borderRadius: 9, padding: 10, cursor: "grab" }}
+                  style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 9, padding: 10, cursor: "grab" }}
                 >
                   <div onClick={() => onCardClick(t)} style={{ cursor: "pointer" }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{t.name}</div>
