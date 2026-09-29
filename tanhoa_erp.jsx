@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
 import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
-import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
-
+import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveQuoteChildren, saveOrderChildren, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 // Public QR/Passport loader is kept local so this build remains compatible with older
 // supabaseRest.js copies that may still be deployed in Vercel.
 async function loadPublicSample(sampleId) {
@@ -1051,9 +1050,9 @@ function levelCan(level, module, action = "view") {
         }
       })();
     },
-    quotes: (next) => { setQuotes(next); Promise.all(next.map((q) => saveJsonRecord("quote", q))).then(() => Promise.all(quotes.filter((q) => !next.some((n) => n.id === q.id)).map((q) => deleteJsonRecord("quote", q.id)))).catch((e) => alert("Quote save failed: " + e.message)); },
-    orders: (next) => { setOrders(next); Promise.all(next.map((o) => saveJsonRecord("order", o))).then(() => Promise.all(orders.filter((o) => !next.some((n) => n.id === o.id)).map((o) => deleteJsonRecord("order", o.id)))).catch((e) => alert("Order save failed: " + e.message)); },
-    shipments: (next) => { setShipments(next); Promise.all(next.map((s) => saveJsonRecord("shipment", s))).then(() => Promise.all(shipments.filter((s) => !next.some((n) => n.id === s.id)).map((s) => deleteJsonRecord("shipment", s.id)))).catch((e) => alert("Shipment save failed: " + e.message)); },
+    quotes: (next) => { setQuotes(next); Promise.all(next.map((q) => upsertRows("quotes", [adapters.quotes(q)]).then(() => saveQuoteChildren(q)))).then(() => Promise.all(quotes.filter((q) => !next.some((n) => n.id === q.id)).map((q) => deleteWhere("quote_items", "quote_id", q.id).then(() => deleteRow("quotes", q.id))))).catch((e) => alert("Quote save failed: " + e.message)); },
+    orders: (next) => { setOrders(next); Promise.all(next.map((o) => upsertRows("orders", [adapters.orders(o)]).then(() => saveOrderChildren(o)))).then(() => Promise.all(orders.filter((o) => !next.some((n) => n.id === o.id)).map((o) => deleteWhere("order_items", "order_id", o.id).then(() => deleteRow("orders", o.id))))).catch((e) => alert("Order save failed: " + e.message)); },
+    shipments: (next) => { setShipments(next); Promise.all(next.map((s) => upsertRows("shipments", [adapters.shipments(s)]))).then(() => Promise.all(shipments.filter((s) => !next.some((n) => n.id === s.id)).map((s) => deleteRow("shipments", s.id)))).catch((e) => alert("Shipment save failed: " + e.message)); },
     materialPreps: (next) => {
       // sample_components is the source of truth for individual material status.
       // Keep the local Sample view synchronized as well, and persist the linked
