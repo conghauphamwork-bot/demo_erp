@@ -4644,10 +4644,13 @@ function SampleQuickView({ sample, customerName, productTypeName, materialLists 
 
 function DetailRow({ label, value }) {
   if (value === "" || value === null || value === undefined) return null;
+  const safeValue = typeof value === "object"
+    ? "—"
+    : String(value).length > 300 ? String(value).slice(0, 300) + "…" : value;
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: `1px solid ${COLORS.line}`, fontSize: 13.5 }}>
       <span style={{ color: COLORS.inkSoft }}>{label}</span>
-      <span style={{ fontWeight: 600, textAlign: "right" }}>{value}</span>
+      <span style={{ fontWeight: 600, textAlign: "right" }}>{safeValue}</span>
     </div>
   );
 }
@@ -4743,7 +4746,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
         </div>
         <div>
           <SectionHeading>Production & stage</SectionHeading>
-          <DetailRow label="Stage group" value={s.stageGroup} /><DetailRow label="Current stage" value={s.stage} /><DetailRow label="Stage status" value={s.stageStatus} /><DetailRow label="Waiting for" value={s.waitingFor} /><DetailRow label="Next action" value={s.nextAction} /><DetailRow label="Priority" value={s.priority} /><DetailRow label="Stage start" value={s.stageStartDate} /><DetailRow label="Target date" value={s.targetDate} /><DetailRow label="Completed date" value={s.completedDate} /><DetailRow label="Overall status" value={s.overallStatus} /><DetailRow label="Linked order" value={s.orderId} />
+          <DetailRow label="Stage group" value={s.stageGroup} /><DetailRow label="Current stage" value={normalizeSampleWorkflowStage(s.stage)} /><DetailRow label="Stage status" value={s.stageStatus} /><DetailRow label="Waiting for" value={s.waitingFor} /><DetailRow label="Next action" value={s.nextAction} /><DetailRow label="Priority" value={s.priority} /><DetailRow label="Stage start" value={s.stageStartDate} /><DetailRow label="Target date" value={s.targetDate} /><DetailRow label="Completed date" value={s.completedDate} /><DetailRow label="Overall status" value={s.overallStatus} /><DetailRow label="Linked order" value={s.orderId} />
         </div>
       </div>
 
@@ -5092,10 +5095,15 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        {[["Overdue", overdue.length, COLORS.red, COLORS.redSoft],["Due today", dueToday.length, COLORS.wood, "#EAF1FE"],["This week", thisWeek.length, COLORS.amber, COLORS.amberSoft],["Product on-time", onTimeRate === null ? "—" : `${onTimeRate}%`, COLORS.green, COLORS.greenSoft]].map(([label,value,color,bg]) => (
+        {[["Overdue", overdue.length, COLORS.red, COLORS.redSoft, AlertCircle],["Due today", dueToday.length, COLORS.wood, "#EAF1FE", CalendarDays],["This week", thisWeek.length, COLORS.amber, COLORS.amberSoft, ListTodo],["Product on-time", onTimeRate === null ? null : `${onTimeRate}%`, COLORS.green, COLORS.greenSoft, CheckCircle2]].map(([label,value,color,bg,TileIcon]) => (
           <div key={label} style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: "11px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}>
-            <div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 2, fontSize: 20, lineHeight: 1, fontWeight: 850, color }}>{value}</div></div>
-            <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, display: "grid", placeItems: "center", color }}><CalendarDays size={15} /></div>
+            <div>
+              <div style={{ fontSize: 10.5, color: COLORS.inkSoft, fontWeight: 700 }}>{label}</div>
+              {value === null
+                ? <div style={{ marginTop: 3, fontSize: 12, color: COLORS.inkSoft }}>No data yet</div>
+                : <div style={{ marginTop: 2, fontSize: 20, lineHeight: 1, fontWeight: 850, color }}>{value}</div>}
+            </div>
+            <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, display: "grid", placeItems: "center", color, flexShrink: 0 }}><TileIcon size={15} /></div>
           </div>
         ))}
       </div>
@@ -5120,9 +5128,8 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
           <div style={{ display: "grid", gridTemplateColumns: "190px repeat(7, minmax(0, 1fr))", minHeight: 450 }}>
             <div style={{ background: "#F9FAFB", borderRight: `1px solid ${COLORS.line}` }}>
               <div style={{ padding: 12, borderBottom: `1px solid ${COLORS.line}` }}><div style={{ fontSize: 12.5, fontWeight: 800 }}>Follow-up queue</div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, marginTop: 3 }}>Items requiring attention</div><div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 13 }}>{overdue.slice(0, 5).map((e) => <button key={e.id} onClick={() => openEdit(e)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", fontSize: 10.5, display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.red }} /><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.label}</span></button>)}{!overdue.length && <div style={{ fontSize: 10.5, color: COLORS.green }}>No overdue items.</div>}</div></div>
-              <div style={{ padding: 12 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: ".06em" }}>How it works</div><div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 10.2, color: COLORS.inkSoft }}><div>↕ Drag a card to another day</div><div>✎ Click a card to edit</div><div>✓ Mark work as Done</div></div></div>
             </div>
-            {weekDays.map((d) => { const dayEvents = eventsByDate[d.iso] || []; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: 7, borderRight: `1px solid ${COLORS.line}`, background: dragOverDate === d.iso ? "#EFF2F5" : (d.iso === today ? "#F3F5F7" : "#FFFFFF"), minWidth: 0, transition: "background .15s ease" }}><div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 430 }}>{dayEvents.slice(0, 8).map((e) => <EventCard key={e.id} e={e} compact />)}{dayEvents.length > 8 && <button onClick={() => setSelectedEvent({ date: d.iso, label: `${dayEvents.length - 8} more items`, type: "more", more: dayEvents.slice(8) })} style={{ border: "none", background: "transparent", color: COLORS.wood, fontWeight: 800, fontSize: 10.5, cursor: "pointer", padding: 4 }}>+ {dayEvents.length - 8} more</button>}{!dayEvents.length && <div style={{ flex: 1, minHeight: 120, border: dragOverDate === d.iso ? `2px dashed ${COLORS.wood}` : "1px dashed #E5EAEF", borderRadius: 10, display: "grid", placeItems: "center", color: dragOverDate === d.iso ? COLORS.wood : "#ACBACA", fontSize: 10.5 }}>{dragOverDate === d.iso ? "Drop here" : "No plan"}</div>}</div></div>; })}
+            {weekDays.map((d) => { const dayEvents = eventsByDate[d.iso] || []; return <div key={d.iso} onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; setDragOverDate(d.iso); }} onDragLeave={() => setDragOverDate(null)} onDrop={() => handleDrop(d.iso)} style={{ padding: 7, borderRight: `1px solid ${COLORS.line}`, background: dragOverDate === d.iso ? "#EFF2F5" : (d.iso === today ? "#F3F5F7" : "#FFFFFF"), minWidth: 0, transition: "background .15s ease" }}><div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 430 }}>{dayEvents.slice(0, 8).map((e) => <EventCard key={e.id} e={e} compact />)}{dayEvents.length > 8 && <button onClick={() => setSelectedEvent({ date: d.iso, label: `${dayEvents.length - 8} more items`, type: "more", more: dayEvents.slice(8) })} style={{ border: "none", background: "transparent", color: COLORS.wood, fontWeight: 800, fontSize: 10.5, cursor: "pointer", padding: 4 }}>+ {dayEvents.length - 8} more</button>}{!dayEvents.length && <div style={{ flex: 1, minHeight: 64, border: dragOverDate === d.iso ? `2px dashed ${COLORS.wood}` : "1px dashed #E9EDF1", borderRadius: 10, display: "grid", placeItems: "center", color: COLORS.wood, fontSize: 10.5, fontWeight: 700 }}>{dragOverDate === d.iso ? "Drop here" : ""}</div>}</div></div>; })}
           </div>
         </div>
       ) : (
