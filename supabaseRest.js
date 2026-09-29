@@ -207,6 +207,7 @@ export async function getMyProfile(userId) {
 export async function loadWorkspace() {
   const [customers, samples, quotes, quoteItems, orders, orderItems, shipments, components, notes, revisions, tasks,
     productTypes, mainMaterials, finishes, woodSurface, fabricTypes, fabricColors, ropeTypes, ropeColors, cemboardColors,
+    productsMaster, priceList, proformaInvoices, piItems, productionRequests, productionRequestItems, productionOrders, productionOrderItems, testItems,
   ] = await Promise.all([
     selectAll("customers"),
     selectAll("samples"),
@@ -228,6 +229,15 @@ export async function loadWorkspace() {
     selectAll("rope_types"),
     selectAll("rope_colors"),
     selectAll("cemboard_colors"),
+    selectAll("products"),
+    selectAll("price_list"),
+    selectAll("proforma_invoices"),
+    selectAll("pi_items"),
+    selectAll("production_requests"),
+    selectAll("production_request_items"),
+    selectAll("production_orders"),
+    selectAll("production_order_items"),
+    selectAll("test_items"),
   ]);
 
   const noteMap = groupBy(sampleNotesToApp(notes), "sampleId");
@@ -244,6 +254,9 @@ export async function loadWorkspace() {
 
   const quoteItemsByQuote = groupBy(quoteItems, "quote_id");
   const orderItemsByOrder = groupBy(orderItems, "order_id");
+  const piItemsByPi = groupBy(piItems, "pi_id");
+  const requestItemsByRequest = groupBy(productionRequestItems, "production_request_id");
+  const orderItemsByProdOrder = groupBy(productionOrderItems, "production_order_id");
 
   return {
     customers: customers.map(customerToApp),
@@ -251,6 +264,12 @@ export async function loadWorkspace() {
     quotes: quotes.map((r) => quoteToApp(r, quoteItemsByQuote)),
     orders: orders.map((r) => orderToApp(r, orderItemsByOrder)),
     shipments: shipments.map(shipmentToApp),
+    products: productsMaster.map(productToApp),
+    priceList: priceList.map(priceListToApp),
+    proformaInvoices: proformaInvoices.map((r) => piToApp(r, piItemsByPi)),
+    productionRequests: productionRequests.map((r) => productionRequestToApp(r, requestItemsByRequest)),
+    productionOrders: productionOrders.map((r) => productionOrderToApp(r, orderItemsByProdOrder)),
+    testItems: testItems.map(testItemToApp),
     materialPreps: componentRows,
     tasks: tasks.map(taskToApp),
     materialLists: {
@@ -288,11 +307,6 @@ function taskToApp(r) { return { id: r.id, name: r.name || "", type: r.type || "
 function sampleComponentsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, materialName: r.component_name || "", qty: r.qty ?? 1, startDate: r.start_date || "", dueDate: r.target_date || "", status: r.status || "Waiting", photo: r.proof_image_url || "" })); }
 function sampleNotesToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, text: r.note || "", createdAt: r.created_at || new Date().toISOString() })); }
 function sampleRevisionsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, date: r.revision_date || "", changeReason: r.change_reason || "", photo: r.photo_url || "", note: r.note || "" })); }
-function quoteItemToApp(r) { return { id: r.id, name: r.name || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
-function quoteToApp(r, itemsByQuote) { return { id: r.id, customerId: r.customer_id || "", date: r.quote_date || "", validUntil: r.valid_until || "", status: r.status || "Draft", notes: r.notes || "", items: (itemsByQuote[r.id] || []).map(quoteItemToApp) }; }
-function orderItemToApp(r) { return { id: r.id, name: r.name || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
-function orderToApp(r, itemsByOrder) { return { id: r.id, quoteId: r.quote_id || "", customerId: r.customer_id || "", orderDate: r.order_date || "", stage: r.stage || "Confirmed", notes: r.notes || "", items: (itemsByOrder[r.id] || []).map(orderItemToApp) }; }
-function shipmentToApp(r) { return { id: r.id, orderId: r.order_id || "", carrier: r.carrier || "", trackingNo: r.tracking_no || "", shipDate: r.ship_date || "", eta: r.eta || "", status: r.status || "Preparing", notes: r.notes || "" }; }
 
 function sampleToApp(r) {
   return {
@@ -313,6 +327,27 @@ function sampleToApp(r) {
 
 function normalizeLoadedSample(s) { return s; }
 
+function quoteItemToApp(r) { return { id: r.id, name: r.name || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
+function quoteToApp(r, itemsByQuote) { return { id: r.id, customerId: r.customer_id || "", date: r.quote_date || "", validUntil: r.valid_until || "", status: r.status || "Draft", notes: r.notes || "", items: (itemsByQuote[r.id] || []).map(quoteItemToApp) }; }
+function orderItemToApp(r) { return { id: r.id, name: r.name || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
+function orderToApp(r, itemsByOrder) { return { id: r.id, quoteId: r.quote_id || "", customerId: r.customer_id || "", orderDate: r.order_date || "", stage: r.stage || "Confirmed", notes: r.notes || "", items: (itemsByOrder[r.id] || []).map(orderItemToApp) }; }
+function shipmentToApp(r) { return { id: r.id, orderId: r.order_id || "", carrier: r.carrier || "", trackingNo: r.tracking_no || "", shipDate: r.ship_date || "", eta: r.eta || "", status: r.status || "Preparing", notes: r.notes || "" }; }
+
+function productToApp(r) { return { id: r.id, code: r.code || "", name: r.name || "", productTypeId: r.product_type_id || "", description: r.description || "", image: r.image_url || "", status: r.status || "Active" }; }
+
+function priceListToApp(r) { return { id: r.id, productId: r.product_id || "", customerId: r.customer_id || "", unitPrice: r.unit_price ?? 0, currency: r.currency || "USD", effectiveDate: r.effective_date || "", notes: r.notes || "" }; }
+
+function piItemToApp(r) { return { id: r.id, productId: r.product_id || "", qty: r.qty ?? 1, unitPrice: r.unit_price ?? 0 }; }
+function piToApp(r, itemsByPi) { return { id: r.id, customerId: r.customer_id || "", quoteId: r.quote_id || "", date: r.pi_date || "", validUntil: r.valid_until || "", status: r.status || "Draft", notes: r.notes || "", items: (itemsByPi[r.id] || []).map(piItemToApp) }; }
+
+function reqItemToApp(r) { return { id: r.id, productId: r.product_id || "", qty: r.qty ?? 1 }; }
+function productionRequestToApp(r, itemsByRequest) { return { id: r.id, type: r.type || "sample", piId: r.pi_id || "", customerId: r.customer_id || "", sampleId: r.sample_id || "", status: r.status || "Pending", notes: r.notes || "", items: (itemsByRequest[r.id] || []).map(reqItemToApp) }; }
+
+function poItemToApp(r) { return { id: r.id, productId: r.product_id || "", qty: r.qty ?? 1, readyDate: r.ready_date || "" }; }
+function productionOrderToApp(r, itemsByOrder) { return { id: r.id, productionRequestId: r.production_request_id || "", status: r.status || "Planned", notes: r.notes || "", items: (itemsByOrder[r.id] || []).map(poItemToApp) }; }
+
+function testItemToApp(r) { return { id: r.id, productionOrderItemId: r.production_order_item_id || "", productId: r.product_id || "", sentDate: r.sent_date || "", testPurpose: r.test_purpose || "", expectedReturnDate: r.expected_return_date || "", returnedDate: r.returned_date || "", status: r.status || "Sent", notes: r.notes || "" }; }
+
 export const adapters = {
   customers: (x) => ({ id: x.id, code: x.code || x.id, name: x.name || "", country: x.country || "", contact_person: nullify(x.contact), email: nullify(x.email), phone: nullify(x.phone) }),
   samples: (x) => ({
@@ -326,9 +361,6 @@ export const adapters = {
     next_action: nullify(x.nextAction), stage_start_date: nullify(x.stageStartDate), stage_status: nullify(x.stageStatus), priority: nullify(x.priority), target_date: nullify(x.targetDate), completed_date: nullify(x.completedDate), overall_status: nullify(x.overallStatus), image_url: nullify(x.image), order_id: nullify(x.orderId),
     carton_length: x.cartonLength === "" ? null : x.cartonLength, carton_width: x.cartonWidth === "" ? null : x.cartonWidth, carton_height: x.cartonHeight === "" ? null : x.cartonHeight,
     net_weight: x.netWeight === "" ? null : x.netWeight, gross_weight: x.grossWeight === "" ? null : x.grossWeight, pcs_per_ctn: x.pcsPerCtn === "" ? null : x.pcsPerCtn, carton_qty: x.cartonQty === "" ? null : x.cartonQty, cbm: x.cbm === "" ? null : x.cbm,
-      quotes: (x) => ({ id: x.id, customer_id: nullify(x.customerId), quote_date: nullify(x.date), valid_until: nullify(x.validUntil), status: x.status || "Draft", notes: nullify(x.notes) }),
-  orders: (x) => ({ id: x.id, quote_id: nullify(x.quoteId), customer_id: nullify(x.customerId), order_date: nullify(x.orderDate), stage: x.stage || "Confirmed", notes: nullify(x.notes) }),
-  shipments: (x) => ({ id: x.id, order_id: nullify(x.orderId), carrier: nullify(x.carrier), tracking_no: nullify(x.trackingNo), ship_date: nullify(x.shipDate), eta: nullify(x.eta), status: x.status || "Preparing", notes: nullify(x.notes) }),
   }),
   components: (x) => ({ id: x.id, sample_id: x.sampleId, component_name: x.materialName || "", qty: x.qty ?? 1, start_date: nullify(x.startDate), target_date: nullify(x.dueDate), status: x.status || "Waiting", proof_image_url: nullify(x.photo) }),
   tasks: (x) => ({ id: x.id, name: x.name || "", type: x.type || "Daily", description: nullify(x.description), reference_person: nullify(x.referencePerson), deadline: nullify(x.deadline), status: x.status || "To Do", priority: nullify(x.priority), sample_id: nullify(x.sampleId), note: nullify(x.note), image_url: nullify(x.image) }),
@@ -337,6 +369,15 @@ export const adapters = {
   // Finishes / Fabric Colors / Rope Colors) but missing from this file, which
   // crashed with "adapters.colorMasters is not a function" on save.
   colorMasters: (x) => ({ id: x.id, code: x.code || "", name: x.name || "", image_url: nullify(x.image) }),
+  quotes: (x) => ({ id: x.id, customer_id: nullify(x.customerId), quote_date: nullify(x.date), valid_until: nullify(x.validUntil), status: x.status || "Draft", notes: nullify(x.notes) }),
+  orders: (x) => ({ id: x.id, quote_id: nullify(x.quoteId), customer_id: nullify(x.customerId), order_date: nullify(x.orderDate), stage: x.stage || "Confirmed", notes: nullify(x.notes) }),
+  shipments: (x) => ({ id: x.id, order_id: nullify(x.orderId), carrier: nullify(x.carrier), tracking_no: nullify(x.trackingNo), ship_date: nullify(x.shipDate), eta: nullify(x.eta), status: x.status || "Preparing", notes: nullify(x.notes) }),
+  products: (x) => ({ id: x.id, code: x.code || x.id, name: x.name || "", product_type_id: nullify(x.productTypeId), description: nullify(x.description), image_url: nullify(x.image), status: x.status || "Active" }),
+  priceList: (x) => ({ id: x.id, product_id: nullify(x.productId), customer_id: nullify(x.customerId), unit_price: x.unitPrice === "" ? null : x.unitPrice, currency: x.currency || "USD", effective_date: nullify(x.effectiveDate), notes: nullify(x.notes) }),
+  proformaInvoices: (x) => ({ id: x.id, customer_id: nullify(x.customerId), quote_id: nullify(x.quoteId), pi_date: nullify(x.date), valid_until: nullify(x.validUntil), status: x.status || "Draft", notes: nullify(x.notes) }),
+  productionRequests: (x) => ({ id: x.id, type: x.type || "sample", pi_id: nullify(x.piId), customer_id: nullify(x.customerId), sample_id: nullify(x.sampleId), status: x.status || "Pending", notes: nullify(x.notes) }),
+  productionOrders: (x) => ({ id: x.id, production_request_id: x.productionRequestId, status: x.status || "Planned", notes: nullify(x.notes) }),
+  testItems: (x) => ({ id: x.id, production_order_item_id: x.productionOrderItemId, product_id: nullify(x.productId), sent_date: nullify(x.sentDate), test_purpose: nullify(x.testPurpose), expected_return_date: nullify(x.expectedReturnDate), returned_date: nullify(x.returnedDate), status: x.status || "Sent", notes: nullify(x.notes) }),
 };
 
 export async function saveSampleChildren(sample) {
@@ -357,6 +398,21 @@ export async function saveOrderChildren(order) {
   const items = (order.items || []).map((i) => ({ id: i.id, order_id: order.id, name: i.name || "", qty: i.qty === "" ? null : i.qty, unit_price: i.unitPrice === "" ? null : i.unitPrice }));
   await deleteWhere("order_items", "order_id", order.id);
   await upsertRows("order_items", items);
+}
+export async function savePiChildren(pi) {
+  const items = (pi.items || []).map((i) => ({ id: i.id, pi_id: pi.id, product_id: i.productId, qty: i.qty === "" ? null : i.qty, unit_price: i.unitPrice === "" ? null : i.unitPrice }));
+  await deleteWhere("pi_items", "pi_id", pi.id);
+  await upsertRows("pi_items", items);
+}
+export async function saveProductionRequestChildren(request) {
+  const items = (request.items || []).map((i) => ({ id: i.id, production_request_id: request.id, product_id: i.productId, qty: i.qty === "" ? null : i.qty }));
+  await deleteWhere("production_request_items", "production_request_id", request.id);
+  await upsertRows("production_request_items", items);
+}
+export async function saveProductionOrderChildren(order) {
+  const items = (order.items || []).map((i) => ({ id: i.id, production_order_id: order.id, product_id: i.productId, qty: i.qty === "" ? null : i.qty, ready_date: nullify(i.readyDate) }));
+  await deleteWhere("production_order_items", "production_order_id", order.id);
+  await upsertRows("production_order_items", items);
 }
 
 export async function saveJsonRecord(recordType, record) {
