@@ -81,8 +81,8 @@ const COLORS = {
 
 // Apple-style system font stack: uses San Francisco on Apple devices and
 // the closest native system UI font on Windows/Android. No web-font dependency.
-const FONT_HEAD = '"Inter", "Plus Jakarta Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
-const FONT_BODY = '"Inter", "Plus Jakarta Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+const FONT_HEAD = '"Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+const FONT_BODY = '"Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
 
 /* ---------------- Seed / reference data (from the uploaded spreadsheet) ---------------- */
 
@@ -549,7 +549,7 @@ function Button({ children, onClick, variant = "primary", type = "button", small
 function Field({ label, children, width }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 5, width: width || "100%" }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.inkSoft }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1, color: COLORS.inkSoft }}>{label}</span>
       {children}
     </label>
   );
@@ -707,7 +707,7 @@ function Panel({ title, action, children }) {
             flexWrap: "wrap",
           }}
         >
-          <h3 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 17, fontWeight: 700, letterSpacing: "-.2px" }}>{title}</h3>
+          <h3 style={{ margin: 0, fontFamily: FONT_HEAD, fontSize: 18, fontWeight: 600, lineHeight: 1.4 }}>{title}</h3>
           {action}
         </div>
       )}
@@ -721,8 +721,9 @@ function SectionHeading({ children }) {
     <div
       style={{
         fontFamily: FONT_HEAD,
-        fontSize: 11.5,
-        fontWeight: 800,
+        fontSize: 12,
+        fontWeight: 600,
+        lineHeight: 1,
         color: COLORS.wood,
         textTransform: "uppercase",
         letterSpacing: "0.06em",
@@ -1188,6 +1189,7 @@ function levelCan(level, module, action = "view") {
   return (
     <div className="erp-shell" style={{ fontFamily: FONT_BODY, background: COLORS.bg, color: COLORS.ink }}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap');
         *, *::before, *::after { box-sizing: border-box; }
         html, body, #root { margin: 0; min-height: 100%; width: 100%; }
         body { background: ${COLORS.bg}; color: ${COLORS.ink}; font-family: ${FONT_BODY}; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
@@ -1405,8 +1407,8 @@ function levelCan(level, module, action = "view") {
         div[style*="border-radius: 12px"], div[style*="border-radius: 14px"], div[style*="border-radius: 16px"], div[style*="border-radius: 18px"] { border-radius: 18px !important; }
         table { border-color: #E2E7EC; }
         th { font-weight: 650 !important; color: #425468 !important; }
-        .erp-content h1 { letter-spacing: -.3px; font-weight: 800; text-transform: uppercase; }
-        .erp-content h2, .erp-content h3 { letter-spacing: -.2px; }
+        .erp-content h1 { font-family: 'Public Sans', sans-serif !important; font-size: 22px !important; font-weight: 600 !important; line-height: 1.2 !important; letter-spacing: normal !important; text-transform: none !important; }
+        .erp-content h2, .erp-content h3 { font-family: 'Public Sans', sans-serif !important; font-size: 14px !important; font-weight: 600 !important; line-height: 1.4 !important; letter-spacing: normal !important; }
         @media (max-width: 560px) {
           .erp-content { padding: 12px; }
           .erp-sidebar nav button { padding: 8px 10px !important; font-size: 13px !important; }
