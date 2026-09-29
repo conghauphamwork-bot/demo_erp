@@ -4397,7 +4397,7 @@ function KanbanCard({ sample: s, customerName, onClick, onQuickEdit, onSaveSampl
         value={stage}
         onChange={(e) => onMoveStage(e.target.value)}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", fontSize: 11.5, padding: "8px 10px", borderRadius: 10, border: "1px solid #DEE4EA", background: "#F8F9FA", color: "#364454", fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
+        style={{ width: "100%", fontSize: 11.5, padding: "8px 10px", borderRadius: 10, border: "1px solid #D3E1FC", background: "#F0F5FF", color: "#2F6FED", fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
       >
         {SAMPLE_STAGES.map((st) => <option key={st} value={st}>{st}</option>)}
       </select>
@@ -5090,7 +5090,7 @@ function CalendarView({ samples, materialPreps, tasks, customerName, saveSamples
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        {[["Overdue", overdue.length, COLORS.red, COLORS.redSoft],["Due today", dueToday.length, COLORS.wood, COLORS.amberSoft],["This week", thisWeek.length, COLORS.amber, COLORS.amberSoft],["Product on-time", onTimeRate === null ? "—" : `${onTimeRate}%`, COLORS.green, COLORS.greenSoft]].map(([label,value,color,bg]) => (
+        {[["Overdue", overdue.length, COLORS.red, COLORS.redSoft],["Due today", dueToday.length, COLORS.wood, "#EAF1FE"],["This week", thisWeek.length, COLORS.amber, COLORS.amberSoft],["Product on-time", onTimeRate === null ? "—" : `${onTimeRate}%`, COLORS.green, COLORS.greenSoft]].map(([label,value,color,bg]) => (
           <div key={label} style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: "11px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}>
             <div><div style={{ fontSize: 10.5, color: COLORS.inkSoft, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 2, fontSize: 20, lineHeight: 1, fontWeight: 850, color }}>{value}</div></div>
             <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, display: "grid", placeItems: "center", color }}><CalendarDays size={15} /></div>
@@ -5717,19 +5717,20 @@ function TaskKanbanBoard({ tasks, sampleLabel, moveStatus, onCardClick }) {
             style={{
               width: "100%",
               minWidth: 0,
-              background: isOver ? COLORS.amberSoft : COLORS.bg,
-              border: `1px solid ${isOver ? COLORS.amber : COLORS.line}`,
-              borderRadius: 12,
+              background: "#FFFFFF",
+              border: `1px solid ${isOver ? "#2F6FED" : "#D8DFE6"}`,
+              borderRadius: 14,
               display: "flex",
               flexDirection: "column",
               minHeight: "calc(100vh - 250px)",
               maxHeight: "calc(100vh - 190px)",
               overflow: "hidden",
+              boxShadow: isOver ? "0 0 0 2px rgba(47,111,237,.22), 0 10px 28px rgba(17,17,17,.07)" : "0 2px 8px rgba(17,17,17,.035)",
             }}
           >
-            <div style={{ padding: "10px 12px", borderBottom: `1px solid ${COLORS.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.woodDark }}>{status}</span>
-              <span style={{ fontSize: 11.5, color: COLORS.inkSoft, background: "#FFFFFF", borderRadius: 999, padding: "1px 8px", border: `1px solid ${COLORS.line}` }}>{cards.length}</span>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #E2E7EC", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#EDF0F3" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#415265" }}>{status}</span>
+              <span style={{ minWidth: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#475A6F", background: "#F4F6F8", borderRadius: 999, padding: "0 8px", border: "1px solid #DDE3E9", fontWeight: 800 }}>{cards.length}</span>
             </div>
             <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", minHeight: 0, flex: 1 }}>
               {cards.map((t) => (
@@ -5738,7 +5739,7 @@ function TaskKanbanBoard({ tasks, sampleLabel, moveStatus, onCardClick }) {
                   draggable
                   onDragStart={(e) => { e.dataTransfer.setData("text/task-id", t.id); setDraggingId(t.id); }}
                   onDragEnd={() => setDraggingId(null)}
-                  style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 9, padding: 10, cursor: "grab" }}
+                  style={{ background: "#FFFFFF", border: "1px solid #E2E7EC", borderRadius: 14, padding: 12, cursor: "grab", boxShadow: "0 1px 2px rgba(17,17,17,.03)" }}
                 >
                   <div onClick={() => onCardClick(t)} style={{ cursor: "pointer" }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{t.name}</div>
@@ -5754,7 +5755,7 @@ function TaskKanbanBoard({ tasks, sampleLabel, moveStatus, onCardClick }) {
                     value={t.status}
                     onChange={(e) => moveStatus(t.id, e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ marginTop: 8, width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.line}`, background: COLORS.bg, color: COLORS.ink, fontFamily: FONT_BODY }}
+                    style={{ marginTop: 8, width: "100%", fontSize: 11.5, padding: "8px 10px", borderRadius: 10, border: "1px solid #D3E1FC", background: "#F0F5FF", color: "#2F6FED", fontWeight: 700, fontFamily: FONT_BODY, cursor: "pointer" }}
                   >
                     {TASK_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
                   </select>
