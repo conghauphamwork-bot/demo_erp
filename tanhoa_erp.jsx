@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
-import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical } from "lucide-react";
 import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
@@ -295,6 +295,7 @@ const BLANK_PRODUCT = {
   revisions: [],
   orderId: "",
   cartonLength: "", cartonWidth: "", cartonHeight: "", netWeight: "", grossWeight: "", pcsPerCtn: "", cartonQty: "", cbm: "",
+  customerApprovalStatus: "Pending", customerApprovalDate: "", customerApprovalNote: "", customerApprovalBy: "",
 };
 
 function normalizeSample(s) {
@@ -980,6 +981,13 @@ function levelCan(level, module, action = "view") {
   const [materialPreps, setMaterialPreps] = useState([]);
   const [tasks, setTasks] = useState([]);
 
+  // Mass Production upgrade, Phase 1 tables.
+  const [manufacturingOrders, setManufacturingOrders] = useState([]);
+  const [moProductLines, setMoProductLines] = useState([]);
+  const [productionApprovals, setProductionApprovals] = useState([]);
+  const [productionLots, setProductionLots] = useState([]);
+  const [massProductionTestSamples, setMassProductionTestSamples] = useState([]);
+
   const [materialLists, setMaterialLists] = useState({});
 
   useEffect(() => {
@@ -1010,6 +1018,11 @@ function levelCan(level, module, action = "view") {
         setMaterialPreps(data.materialPreps);
         setTasks(data.tasks.map((t) => ({ ...BLANK_TASK, ...t })));
         setMaterialLists(data.materialLists);
+        setManufacturingOrders(data.manufacturingOrders || []);
+        setMoProductLines(data.moProductLines || []);
+        setProductionApprovals(data.productionApprovals || []);
+        setProductionLots(data.productionLots || []);
+        setMassProductionTestSamples(data.massProductionTestSamples || []);
       } catch (err) {
         console.error("Supabase load failed", err);
         alert("Could not load Supabase data. Check your Vercel environment variables and Supabase RLS policies.\n\n" + err.message);
@@ -1113,6 +1126,11 @@ function levelCan(level, module, action = "view") {
         : adapters.masters;
       saveCollection(table, materialLists[key] || [], next, adapter).catch((e) => alert("Material master save failed: " + e.message));
     },
+    manufacturingOrders: (next) => { setManufacturingOrders(next); saveCollection("manufacturing_orders", manufacturingOrders, next, adapters.manufacturingOrders).catch((e) => alert("MO save failed: " + e.message)); },
+    moProductLines: (next) => { setMoProductLines(next); saveCollection("mo_product_lines", moProductLines, next, adapters.moProductLines).catch((e) => alert("MO product line save failed: " + e.message)); },
+    productionApprovals: (next) => { setProductionApprovals(next); saveCollection("production_approvals", productionApprovals, next, adapters.productionApprovals).catch((e) => alert("Approval save failed: " + e.message)); },
+    productionLots: (next) => { setProductionLots(next); saveCollection("production_lots", productionLots, next, adapters.productionLots).catch((e) => alert("Lot save failed: " + e.message)); },
+    massProductionTestSamples: (next) => { setMassProductionTestSamples(next); saveCollection("mass_production_test_samples", massProductionTestSamples, next, adapters.massProductionTestSamples).catch((e) => alert("Test sample save failed: " + e.message)); },
   };
 
   const customerName = useCallback((id) => customers.find((c) => c.id === id)?.name || "—", [customers]);
@@ -1141,7 +1159,7 @@ function levelCan(level, module, action = "view") {
   useEffect(() => {
     const allowedForLevel = Number(currentUser?.level ?? 3) === 1
       ? ["samples", "tasks", "calendar"]
-      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping"];
+      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders"];
     if (!allowedForLevel.includes(view)) {
       setView(allowedForLevel[0] || "samples");
     }
@@ -1184,6 +1202,7 @@ function levelCan(level, module, action = "view") {
     { key: "calendar", label: "Calendar", icon: CalendarDays, module: "calendar" },
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
     { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
+    { key: "manufacturingOrders", label: "Manufacturing Orders", icon: Factory, module: "manufacturingOrders" },
   ].filter(n => levelCan(currentUser?.level, n.module, "view"));
 
   return (
@@ -1425,7 +1444,7 @@ function levelCan(level, module, action = "view") {
           const groups = [
             ["GENERAL", NAV.filter(n => ["samples","tasks","calendar"].includes(n.module))],
             ["SALES", NAV.filter(n => ["dashboard","customers","quotes","orders"].includes(n.module))],
-            ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping"].includes(n.module))],
+            ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping","manufacturingOrders"].includes(n.module))],
             ["TOOLS", levelCan(currentUser?.level, "backup", "export") ? [{ key: "backup", label: "Export Data", icon: Download, onClick: handleExportBackup }] : []],
           ];
           return groups.map(([group, items]) => items.length ? <div key={group} style={{ marginTop: 18 }}>
@@ -1493,6 +1512,24 @@ function levelCan(level, module, action = "view") {
         )}
         {view === "shipping" && levelCan(currentUser?.level, "shipping") && (
           <ShippingView shipments={shipments} saveShipments={setAndSave.shipments} orders={orders} customerName={customerName} customers={customers} />
+        )}
+        {view === "manufacturingOrders" && levelCan(currentUser?.level, "manufacturingOrders") && (
+          <ManufacturingOrdersView
+            manufacturingOrders={manufacturingOrders}
+            saveManufacturingOrders={setAndSave.manufacturingOrders}
+            moProductLines={moProductLines}
+            saveMoProductLines={setAndSave.moProductLines}
+            productionApprovals={productionApprovals}
+            saveProductionApprovals={setAndSave.productionApprovals}
+            productionLots={productionLots}
+            saveProductionLots={setAndSave.productionLots}
+            massProductionTestSamples={massProductionTestSamples}
+            saveMassProductionTestSamples={setAndSave.massProductionTestSamples}
+            samples={samples}
+            customers={customers}
+            customerName={customerName}
+            currentUser={currentUser}
+          />
         )}
       </div></div>
 
@@ -3551,6 +3588,23 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
                   <option value="Accept">Accept</option>
                 </Select>
               </Field>
+              <Field label="Customer approval (mass production gate)">
+                <Select value={editing.customerApprovalStatus || "Pending"} onChange={set("customerApprovalStatus")}>
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                  <option value="Revision Requested">Revision Requested</option>
+                </Select>
+              </Field>
+              <Field label="Customer approval date">
+                <Input type="date" value={editing.customerApprovalDate || ""} onChange={set("customerApprovalDate")} />
+              </Field>
+              <Field label="Approval recorded by">
+                <Input value={editing.customerApprovalBy || ""} onChange={set("customerApprovalBy")} placeholder="Tên/email người ghi nhận" />
+              </Field>
+              <Field label="Approval note">
+                <Input value={editing.customerApprovalNote || ""} onChange={set("customerApprovalNote")} placeholder="Ghi chú phản hồi của khách" />
+              </Field>
               <Field label="ERP No.">
                 <Input value={editing.erpNo} onChange={set("erpNo")} placeholder="Company ERP code" />
               </Field>
@@ -4752,7 +4806,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
             {s.image ? <img src={s.image} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <div style={{ color: COLORS.inkSoft, fontSize: 12.5, display: "flex", gap: 6 }}><ImageIcon size={16} /> No product photo yet</div>}
           </div>
           <SectionHeading>Basic info</SectionHeading>
-          <DetailRow label="Customer" value={customerName(s.customerId)} /><DetailRow label="Product type" value={productTypeName(s.productTypeId)} /><DetailRow label="Qty" value={s.qty} /><DetailRow label="ERP No." value={s.erpNo} /><DetailRow label="Manufacturing Order No." value={s.manufacturingOrderNo} /><DetailRow label="IDP No." value={s.idpNo} /><DetailRow label="IDC No." value={s.idcNo} /><DetailRow label="Dimensions (W×D×H)" value={dims} /><DetailRow label="Arm height" value={s.armHeight} /><DetailRow label="Seat height" value={s.seatHeight} />
+          <DetailRow label="Customer" value={customerName(s.customerId)} /><DetailRow label="Product type" value={productTypeName(s.productTypeId)} /><DetailRow label="Qty" value={s.qty} /><DetailRow label="ERP No." value={s.erpNo} /><DetailRow label="Manufacturing Order No." value={s.manufacturingOrderNo} /><DetailRow label="IDP No." value={s.idpNo} /><DetailRow label="IDC No." value={s.idcNo} /><DetailRow label="Dimensions (W×D×H)" value={dims} /><DetailRow label="Arm height" value={s.armHeight} /><DetailRow label="Seat height" value={s.seatHeight} /><DetailRow label="Customer approval" value={s.customerApprovalStatus} /><DetailRow label="Approval date" value={s.customerApprovalDate} /><DetailRow label="Approval by" value={s.customerApprovalBy} /><DetailRow label="Approval note" value={s.customerApprovalNote} />
         </div>
         <div>
           <SectionHeading>Materials & finishes</SectionHeading>
@@ -5915,6 +5969,400 @@ function ShippingView({ shipments, saveShipments, orders, customerName, customer
           empty="No shipments yet."
         />
       </Panel>
+    </div>
+  );
+}
+
+/* ---------------- Manufacturing Orders / Mass Production (Phase 3) ---------------- */
+
+function newUuid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0, v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function moStatusTone(s) {
+  return { Draft: "neutral", "In Production": "wood", Completed: "green", Cancelled: "red" }[s] || "neutral";
+}
+function lineStageStatusTone(s) {
+  return { "On track": "teal", Delayed: "amber", Done: "green" }[s] || "neutral";
+}
+function testResultTone(r) {
+  return { Pass: "green", Fail: "red", Conditional: "amber" }[r] || "neutral";
+}
+
+function ManufacturingOrdersView({
+  manufacturingOrders, saveManufacturingOrders,
+  moProductLines, saveMoProductLines,
+  productionApprovals, saveProductionApprovals,
+  productionLots, saveProductionLots,
+  massProductionTestSamples, saveMassProductionTestSamples,
+  samples, customers, customerName, currentUser,
+}) {
+  const [showMoForm, setShowMoForm] = useState(false);
+  const [editingMo, setEditingMo] = useState(null);
+  const [openMoId, setOpenMoId] = useState(null);
+
+  const [showAddLine, setShowAddLine] = useState(false);
+  const [newLineProductId, setNewLineProductId] = useState("");
+  const [newLineQty, setNewLineQty] = useState("");
+
+  const [exceptionFor, setExceptionFor] = useState(null); // { productId, qty }
+  const [exceptionReason, setExceptionReason] = useState("");
+  const [exceptionBy, setExceptionBy] = useState("");
+  const [exceptionRef, setExceptionRef] = useState("");
+
+  const [lotFor, setLotFor] = useState(null); // line id
+  const [lotNo, setLotNo] = useState("");
+  const [lotQty, setLotQty] = useState("");
+  const [lotDate, setLotDate] = useState("");
+
+  const [showTestForm, setShowTestForm] = useState(false);
+  const [testLineId, setTestLineId] = useState("");
+  const [testLotId, setTestLotId] = useState("");
+  const [testQty, setTestQty] = useState("");
+  const [testDate, setTestDate] = useState("");
+  const [testPurpose, setTestPurpose] = useState("");
+  const [testResult, setTestResult] = useState("");
+
+  const productName = (id) => samples.find((s) => s.id === id)?.name || id || "—";
+  const linesForMo = (moId) => moProductLines.filter((l) => l.moId === moId);
+  const lotsForLine = (lineId) => productionLots.filter((l) => l.moProductLineId === lineId);
+  const testsForMo = (moId) => massProductionTestSamples.filter((t) => t.moId === moId);
+
+  const openMo = manufacturingOrders.find((m) => m.id === openMoId) || null;
+
+  const startNewMo = () => {
+    setEditingMo({ id: "", moNo: "", customerId: customers[0]?.id || "", poReference: "", orderQtyTotal: "", plannedShipDate: "", status: "Draft", notes: "" });
+    setShowMoForm(true);
+  };
+  const startEditMo = (mo) => { setEditingMo({ ...mo }); setShowMoForm(true); };
+  const submitMo = (e) => {
+    e.preventDefault();
+    if (!editingMo.moNo.trim()) { alert("Nhập mã MO."); return; }
+    if (editingMo.id) {
+      saveManufacturingOrders(manufacturingOrders.map((m) => (m.id === editingMo.id ? editingMo : m)));
+    } else {
+      const id = newUuid();
+      saveManufacturingOrders([...manufacturingOrders, { ...editingMo, id }]);
+      setOpenMoId(id);
+    }
+    setShowMoForm(false);
+    setEditingMo(null);
+  };
+  const removeMo = (mo) => {
+    if (!confirm(`Xóa MO ${mo.moNo}? Các dòng Product, approval, lot, test liên quan cũng sẽ bị xóa.`)) return;
+    const lineIds = linesForMo(mo.id).map((l) => l.id);
+    saveManufacturingOrders(manufacturingOrders.filter((m) => m.id !== mo.id));
+    saveMoProductLines(moProductLines.filter((l) => l.moId !== mo.id));
+    saveMassProductionTestSamples(massProductionTestSamples.filter((t) => t.moId !== mo.id));
+    saveProductionLots(productionLots.filter((l) => !lineIds.includes(l.moProductLineId)));
+    if (openMoId === mo.id) setOpenMoId(null);
+  };
+
+  // Approval-before-mass-production gate. Standard = product already approved by
+  // customer. Exception = logged approval with a required reason.
+  const addLineStandard = (mo, product, qty) => {
+    const approvalId = newUuid();
+    const lineId = newUuid();
+    saveProductionApprovals([...productionApprovals, {
+      id: approvalId, productId: product.id, moProductLineId: lineId, approvalType: "Standard",
+      customerConfirmationReference: "", reason: "", approvedBy: currentUser?.full_name || currentUser?.email || "",
+      approvedAt: new Date().toISOString(), status: "Approved",
+    }]);
+    saveMoProductLines([...moProductLines, {
+      id: lineId, moId: mo.id, productId: product.id, qtyOrdered: qty || "", unitPrice: "",
+      productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "",
+      massProductionApprovalId: approvalId, isException: false,
+    }]);
+    setShowAddLine(false); setNewLineProductId(""); setNewLineQty("");
+  };
+
+  const confirmAddLine = () => {
+    const product = samples.find((s) => s.id === newLineProductId);
+    if (!product) { alert("Chọn một Product."); return; }
+    if (product.customerApprovalStatus === "Approved") {
+      addLineStandard(openMo, product, newLineQty);
+    } else {
+      // Not approved yet — require an Exception approval before this line can exist.
+      setExceptionFor({ productId: product.id, qty: newLineQty });
+      setExceptionReason(""); setExceptionBy(""); setExceptionRef("");
+    }
+  };
+
+  const submitException = (e) => {
+    e.preventDefault();
+    if (!exceptionReason.trim()) { alert("Ngoại lệ bắt buộc phải có lý do."); return; }
+    if (!exceptionBy.trim()) { alert("Nhập người phê duyệt ngoại lệ."); return; }
+    const approvalId = newUuid();
+    const lineId = newUuid();
+    saveProductionApprovals([...productionApprovals, {
+      id: approvalId, productId: exceptionFor.productId, moProductLineId: lineId, approvalType: "Exception",
+      customerConfirmationReference: exceptionRef, reason: exceptionReason, approvedBy: exceptionBy,
+      approvedAt: new Date().toISOString(), status: "Approved",
+    }]);
+    saveMoProductLines([...moProductLines, {
+      id: lineId, moId: openMo.id, productId: exceptionFor.productId, qtyOrdered: exceptionFor.qty || "", unitPrice: "",
+      productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "",
+      massProductionApprovalId: approvalId, isException: true,
+    }]);
+    setExceptionFor(null); setShowAddLine(false); setNewLineProductId(""); setNewLineQty("");
+  };
+
+  const removeLine = (line) => {
+    if (!confirm("Xóa dòng Product này khỏi MO?")) return;
+    saveMoProductLines(moProductLines.filter((l) => l.id !== line.id));
+    saveProductionLots(productionLots.filter((l) => l.moProductLineId !== line.id));
+    saveMassProductionTestSamples(massProductionTestSamples.filter((t) => t.moProductLineId !== line.id));
+  };
+
+  const patchLine = (line, patch) => saveMoProductLines(moProductLines.map((l) => (l.id === line.id ? { ...l, ...patch } : l)));
+
+  const submitLot = (e) => {
+    e.preventDefault();
+    if (!lotNo.trim()) { alert("Nhập số lô."); return; }
+    saveProductionLots([...productionLots, { id: newUuid(), moProductLineId: lotFor, lotNo, qty: lotQty, productionDate: lotDate, status: "", notes: "" }]);
+    setLotFor(null); setLotNo(""); setLotQty(""); setLotDate("");
+  };
+
+  const openTestForm = (line) => {
+    setTestLineId(line.id); setTestLotId(""); setTestQty(""); setTestDate(""); setTestPurpose(""); setTestResult("");
+    setShowTestForm(true);
+  };
+  const submitTest = (e) => {
+    e.preventDefault();
+    const line = moProductLines.find((l) => l.id === testLineId);
+    if (!line) return;
+    saveMassProductionTestSamples([...massProductionTestSamples, {
+      id: newUuid(), moId: line.moId, productId: line.productId, moProductLineId: line.id, lotId: testLotId || "",
+      pulledQty: testQty, pulledDate: testDate, pulledBy: currentUser?.full_name || currentUser?.email || "",
+      testPurpose, testResult, testReportUrl: "", reviewedBy: "", reviewedAt: "", linkedShipmentId: "",
+    }]);
+    setShowTestForm(false);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Factory size={22} /></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Manufacturing Orders</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Mỗi MO gồm nhiều Product; tiến độ và duyệt mass production được theo dõi riêng từng dòng.</div></div>
+        </div>
+        <Button onClick={startNewMo}><Plus size={15} /> New MO</Button>
+      </div>
+
+      {showMoForm && (
+        <Panel title={editingMo.id ? `Edit ${editingMo.moNo}` : "New Manufacturing Order"}>
+          <form onSubmit={submitMo} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <Field label="MO No."><Input value={editingMo.moNo} onChange={(e) => setEditingMo({ ...editingMo, moNo: e.target.value })} placeholder="MO-2026-001" /></Field>
+              <Field label="Customer">
+                <Select value={editingMo.customerId} onChange={(e) => setEditingMo({ ...editingMo, customerId: e.target.value })}>
+                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="PO reference"><Input value={editingMo.poReference} onChange={(e) => setEditingMo({ ...editingMo, poReference: e.target.value })} /></Field>
+              <Field label="Total qty"><Input type="number" value={editingMo.orderQtyTotal} onChange={(e) => setEditingMo({ ...editingMo, orderQtyTotal: e.target.value })} /></Field>
+              <Field label="Planned ship date"><Input type="date" value={editingMo.plannedShipDate} onChange={(e) => setEditingMo({ ...editingMo, plannedShipDate: e.target.value })} /></Field>
+              <Field label="Status">
+                <Select value={editingMo.status} onChange={(e) => setEditingMo({ ...editingMo, status: e.target.value })}>
+                  <option value="Draft">Draft</option>
+                  <option value="In Production">In Production</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Notes"><TextArea rows={2} value={editingMo.notes} onChange={(e) => setEditingMo({ ...editingMo, notes: e.target.value })} /></Field>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button type="submit">{editingMo.id ? "Save" : "Create MO"}</Button>
+              <Button type="button" variant="ghost" onClick={() => { setShowMoForm(false); setEditingMo(null); }}>Cancel</Button>
+            </div>
+          </form>
+        </Panel>
+      )}
+
+      <Panel>
+        <Table
+          columns={[
+            { key: "moNo", label: "MO No." },
+            { key: "customer", label: "Customer", render: (m) => customerName(m.customerId) },
+            { key: "lines", label: "Products", render: (m) => linesForMo(m.id).length },
+            { key: "orderQtyTotal", label: "Total qty" },
+            { key: "plannedShipDate", label: "Planned ship" },
+            { key: "status", label: "Status", render: (m) => <Badge tone={moStatusTone(m.status)}>{m.status}</Badge> },
+            {
+              key: "actions", label: "", align: "right",
+              render: (m) => (
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <Button small variant="subtle" onClick={() => setOpenMoId(m.id)}>Open</Button>
+                  <Button small variant="subtle" onClick={() => startEditMo(m)}>Edit</Button>
+                  <Button small variant="danger" onClick={() => removeMo(m)}>Delete</Button>
+                </div>
+              ),
+            },
+          ]}
+          rows={manufacturingOrders}
+          onRowClick={(m) => setOpenMoId(m.id)}
+          empty="Chưa có Manufacturing Order nào."
+        />
+      </Panel>
+
+      {openMo && (
+        <Panel
+          title={`${openMo.moNo} — ${customerName(openMo.customerId)}`}
+          action={<Button small variant="ghost" onClick={() => setOpenMoId(null)}><X size={14} /> Close</Button>}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <SectionHeading>Product lines (tiến độ riêng từng Product)</SectionHeading>
+              <Button small onClick={() => setShowAddLine(true)}><Plus size={14} /> Add product</Button>
+            </div>
+
+            {showAddLine && (
+              <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+                  <Field label="Product">
+                    <Select value={newLineProductId} onChange={(e) => setNewLineProductId(e.target.value)}>
+                      <option value="">— Chọn Product —</option>
+                      {samples.map((s) => <option key={s.id} value={s.id}>{s.id} — {s.name} ({s.customerApprovalStatus || "Pending"})</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Qty"><Input type="number" value={newLineQty} onChange={(e) => setNewLineQty(e.target.value)} /></Field>
+                </div>
+                {newLineProductId && samples.find((s) => s.id === newLineProductId)?.customerApprovalStatus !== "Approved" && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", color: COLORS.amber, fontSize: 12.5, background: COLORS.amberSoft, padding: "8px 10px", borderRadius: 8 }}>
+                    <ShieldAlert size={15} /> Product này chưa được khách duyệt — thêm vào MO sẽ yêu cầu tạo phê duyệt ngoại lệ.
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button small onClick={confirmAddLine}>Add</Button>
+                  <Button small variant="ghost" onClick={() => { setShowAddLine(false); setNewLineProductId(""); setNewLineQty(""); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            {exceptionFor && (
+              <div style={{ border: `1px solid ${COLORS.red}55`, background: COLORS.redSoft, borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, color: COLORS.red, marginBottom: 8 }}>
+                  <ShieldAlert size={16} /> Phê duyệt ngoại lệ (Exception) cho {productName(exceptionFor.productId)}
+                </div>
+                <form onSubmit={submitException} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <Field label="Lý do ngoại lệ (bắt buộc)"><TextArea rows={2} value={exceptionReason} onChange={(e) => setExceptionReason(e.target.value)} placeholder="Vì sao mass trước khi khách duyệt chính thức?" /></Field>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <Field label="Người phê duyệt (bắt buộc)"><Input value={exceptionBy} onChange={(e) => setExceptionBy(e.target.value)} /></Field>
+                    <Field label="Tham chiếu xác nhận của khách (nếu có)"><Input value={exceptionRef} onChange={(e) => setExceptionRef(e.target.value)} /></Field>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button small type="submit" variant="danger">Tạo ngoại lệ & thêm dòng</Button>
+                    <Button small type="button" variant="ghost" onClick={() => setExceptionFor(null)}>Hủy</Button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <Table
+              columns={[
+                { key: "product", label: "Product", render: (l) => productName(l.productId) },
+                { key: "qtyOrdered", label: "Qty" },
+                {
+                  key: "approval", label: "Approval",
+                  render: (l) => l.isException
+                    ? <Badge tone="red"><ShieldAlert size={11} style={{ marginRight: 4, verticalAlign: -1 }} />Exception</Badge>
+                    : <Badge tone="green"><ShieldCheck size={11} style={{ marginRight: 4, verticalAlign: -1 }} />Standard</Badge>,
+                },
+                {
+                  key: "productionStage", label: "Stage",
+                  render: (l) => <Input value={l.productionStage} onChange={(e) => patchLine(l, { productionStage: e.target.value })} style={{ minWidth: 130 }} />,
+                },
+                {
+                  key: "stageStatus", label: "Status",
+                  render: (l) => (
+                    <Select value={l.stageStatus} onChange={(e) => patchLine(l, { stageStatus: e.target.value })} style={{ minWidth: 110 }}>
+                      <option value="On track">On track</option>
+                      <option value="Delayed">Delayed</option>
+                      <option value="Done">Done</option>
+                    </Select>
+                  ),
+                },
+                { key: "lots", label: "Lots", render: (l) => lotsForLine(l.id).length || "—" },
+                {
+                  key: "actions", label: "", align: "right",
+                  render: (l) => (
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <Button small variant="subtle" onClick={() => { setLotFor(l.id); setLotNo(""); setLotQty(""); setLotDate(""); }}>+ Lot</Button>
+                      <Button small variant="subtle" onClick={() => openTestForm(l)}><FlaskConical size={13} /> Test</Button>
+                      <Button small variant="danger" onClick={() => removeLine(l)}>Delete</Button>
+                    </div>
+                  ),
+                },
+              ]}
+              rows={linesForMo(openMo.id)}
+              empty="Chưa có Product nào trong MO này."
+            />
+
+            {lotFor && (
+              <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14 }}>
+                <SectionHeading>Thêm lô/batch cho {productName(moProductLines.find((l) => l.id === lotFor)?.productId)}</SectionHeading>
+                <form onSubmit={submitLot} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <Field label="Số lô"><Input value={lotNo} onChange={(e) => setLotNo(e.target.value)} /></Field>
+                  <Field label="Số lượng"><Input type="number" value={lotQty} onChange={(e) => setLotQty(e.target.value)} /></Field>
+                  <Field label="Ngày sản xuất"><Input type="date" value={lotDate} onChange={(e) => setLotDate(e.target.value)} /></Field>
+                  <Button small type="submit">Thêm lô</Button>
+                  <Button small type="button" variant="ghost" onClick={() => setLotFor(null)}>Hủy</Button>
+                </form>
+              </div>
+            )}
+
+            {showTestForm && (
+              <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14 }}>
+                <SectionHeading>Ghi nhận test hàng mass production</SectionHeading>
+                <form onSubmit={submitTest} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    <Field label="Lot (nếu có)">
+                      <Select value={testLotId} onChange={(e) => setTestLotId(e.target.value)}>
+                        <option value="">— Không chia lô —</option>
+                        {lotsForLine(testLineId).map((lot) => <option key={lot.id} value={lot.id}>{lot.lotNo}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Số lượng lấy mẫu"><Input type="number" value={testQty} onChange={(e) => setTestQty(e.target.value)} /></Field>
+                    <Field label="Ngày lấy mẫu"><Input type="date" value={testDate} onChange={(e) => setTestDate(e.target.value)} /></Field>
+                  </div>
+                  <Field label="Mục đích test"><Input value={testPurpose} onChange={(e) => setTestPurpose(e.target.value)} placeholder="VD: kiểm tra độ bền khung, tải trọng..." /></Field>
+                  <Field label="Kết quả">
+                    <Select value={testResult} onChange={(e) => setTestResult(e.target.value)}>
+                      <option value="">— Chưa có kết quả —</option>
+                      <option value="Pass">Pass</option>
+                      <option value="Fail">Fail</option>
+                      <option value="Conditional">Conditional</option>
+                    </Select>
+                  </Field>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button small type="submit">Lưu kết quả test</Button>
+                    <Button small type="button" variant="ghost" onClick={() => setShowTestForm(false)}>Hủy</Button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <SectionHeading>Truy xuất test — MO + Product + Lot</SectionHeading>
+            <Table
+              columns={[
+                { key: "product", label: "Product", render: (t) => productName(t.productId) },
+                { key: "lot", label: "Lot", render: (t) => productionLots.find((l) => l.id === t.lotId)?.lotNo || "—" },
+                { key: "pulledQty", label: "Qty" },
+                { key: "pulledDate", label: "Pulled date" },
+                { key: "testPurpose", label: "Purpose" },
+                { key: "testResult", label: "Result", render: (t) => t.testResult ? <Badge tone={testResultTone(t.testResult)}>{t.testResult}</Badge> : "—" },
+              ]}
+              rows={testsForMo(openMo.id)}
+              empty="Chưa có lần test nào cho MO này."
+            />
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
