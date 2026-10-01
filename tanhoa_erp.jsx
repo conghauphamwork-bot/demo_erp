@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
 import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
-import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveQuoteChildren, saveOrderChildren, savePiChildren, saveProductionRequestChildren, saveProductionOrderChildren, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
+import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
 // supabaseRest.js copies that may still be deployed in Vercel.
@@ -977,12 +977,6 @@ function levelCan(level, module, action = "view") {
   const [quotes, setQuotes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [shipments, setShipments] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [priceList, setPriceList] = useState([]);
-  const [proformaInvoices, setProformaInvoices] = useState([]);
-  const [productionRequests, setProductionRequests] = useState([]);
-  const [productionOrders, setProductionOrders] = useState([]);
-  const [testItems, setTestItems] = useState([]);
   const [materialPreps, setMaterialPreps] = useState([]);
   const [tasks, setTasks] = useState([]);
 
@@ -1013,12 +1007,6 @@ function levelCan(level, module, action = "view") {
         setQuotes(data.quotes);
         setOrders(data.orders);
         setShipments(data.shipments);
-        setProducts(data.products);
-        setPriceList(data.priceList);
-        setProformaInvoices(data.proformaInvoices);
-        setProductionRequests(data.productionRequests);
-        setProductionOrders(data.productionOrders);
-        setTestItems(data.testItems);
         setMaterialPreps(data.materialPreps);
         setTasks(data.tasks.map((t) => ({ ...BLANK_TASK, ...t })));
         setMaterialLists(data.materialLists);
@@ -1063,15 +1051,9 @@ function levelCan(level, module, action = "view") {
         }
       })();
     },
-    quotes: (next) => { setQuotes(next); Promise.all(next.map((q) => upsertRows("quotes", [adapters.quotes(q)]).then(() => saveQuoteChildren(q)))).then(() => Promise.all(quotes.filter((q) => !next.some((n) => n.id === q.id)).map((q) => deleteWhere("quote_items", "quote_id", q.id).then(() => deleteRow("quotes", q.id))))).catch((e) => alert("Quote save failed: " + e.message)); },
-    orders: (next) => { setOrders(next); Promise.all(next.map((o) => upsertRows("orders", [adapters.orders(o)]).then(() => saveOrderChildren(o)))).then(() => Promise.all(orders.filter((o) => !next.some((n) => n.id === o.id)).map((o) => deleteWhere("order_items", "order_id", o.id).then(() => deleteRow("orders", o.id))))).catch((e) => alert("Order save failed: " + e.message)); },
-    shipments: (next) => { setShipments(next); Promise.all(next.map((s) => upsertRows("shipments", [adapters.shipments(s)]))).then(() => Promise.all(shipments.filter((s) => !next.some((n) => n.id === s.id)).map((s) => deleteRow("shipments", s.id)))).catch((e) => alert("Shipment save failed: " + e.message)); },
-    products: (next) => { setProducts(next); saveCollection("products", products, next, adapters.products).catch((e) => alert("Product save failed: " + e.message)); },
-    priceList: (next) => { setPriceList(next); saveCollection("price_list", priceList, next, adapters.priceList).catch((e) => alert("Price save failed: " + e.message)); },
-    proformaInvoices: (next) => { setProformaInvoices(next); saveCollection("proforma_invoices", proformaInvoices, next, adapters.proformaInvoices).then(() => Promise.all(next.map((pi) => savePiChildren(pi)))).catch((e) => alert("PI save failed: " + e.message)); },
-    productionRequests: (next) => { setProductionRequests(next); saveCollection("production_requests", productionRequests, next, adapters.productionRequests).then(() => Promise.all(next.map((r) => saveProductionRequestChildren(r)))).catch((e) => alert("Production request save failed: " + e.message)); },
-    productionOrders: (next) => { setProductionOrders(next); saveCollection("production_orders", productionOrders, next, adapters.productionOrders).then(() => Promise.all(next.map((o) => saveProductionOrderChildren(o)))).catch((e) => alert("Production order save failed: " + e.message)); },
-    testItems: (next) => { setTestItems(next); saveCollection("test_items", testItems, next, adapters.testItems).catch((e) => alert("Test item save failed: " + e.message)); },
+    quotes: (next) => { setQuotes(next); Promise.all(next.map((q) => saveJsonRecord("quote", q))).then(() => Promise.all(quotes.filter((q) => !next.some((n) => n.id === q.id)).map((q) => deleteJsonRecord("quote", q.id)))).catch((e) => alert("Quote save failed: " + e.message)); },
+    orders: (next) => { setOrders(next); Promise.all(next.map((o) => saveJsonRecord("order", o))).then(() => Promise.all(orders.filter((o) => !next.some((n) => n.id === o.id)).map((o) => deleteJsonRecord("order", o.id)))).catch((e) => alert("Order save failed: " + e.message)); },
+    shipments: (next) => { setShipments(next); Promise.all(next.map((s) => saveJsonRecord("shipment", s))).then(() => Promise.all(shipments.filter((s) => !next.some((n) => n.id === s.id)).map((s) => deleteJsonRecord("shipment", s.id)))).catch((e) => alert("Shipment save failed: " + e.message)); },
     materialPreps: (next) => {
       // sample_components is the source of truth for individual material status.
       // Keep the local Sample view synchronized as well, and persist the linked
@@ -1134,13 +1116,6 @@ function levelCan(level, module, action = "view") {
   };
 
   const customerName = useCallback((id) => customers.find((c) => c.id === id)?.name || "—", [customers]);
-  const productName = useCallback((id) => products.find((p) => p.id === id)?.name || "—", [products]);
-  const priceFor = useCallback((productId, customerId) => {
-    const rows = priceList.filter((p) => p.productId === productId && (!customerId || !p.customerId || p.customerId === customerId));
-    const withCustomer = rows.find((p) => p.customerId === customerId);
-    const chosen = withCustomer || rows.find((p) => !p.customerId) || rows[0];
-    return chosen ? chosen.unitPrice : 0;
-  }, [priceList]);
   const productTypes = materialLists.productTypes || [];
   const productTypeName = useCallback((id) => productTypes.find((p) => p.id === id)?.name || "", [productTypes]);
 
@@ -1209,12 +1184,6 @@ function levelCan(level, module, action = "view") {
     { key: "calendar", label: "Calendar", icon: CalendarDays, module: "calendar" },
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
     { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
-    { key: "catalog", label: "Catalog", icon: Table2, module: "catalog" },
-    { key: "priceList", label: "Price List", icon: FileSpreadsheet, module: "priceList" },
-    { key: "proformaInvoices", label: "PI", icon: FileText, module: "proformaInvoices" },
-    { key: "productionRequests", label: "Production Requests", icon: ListTodo, module: "productionRequests" },
-    { key: "productionOrders", label: "Production Orders", icon: ShoppingCart, module: "productionOrders" },
-    { key: "testItems", label: "Test Items", icon: CheckSquare, module: "testItems" },
   ].filter(n => levelCan(currentUser?.level, n.module, "view"));
 
   return (
@@ -1525,24 +1494,6 @@ function levelCan(level, module, action = "view") {
         {view === "shipping" && levelCan(currentUser?.level, "shipping") && (
           <ShippingView shipments={shipments} saveShipments={setAndSave.shipments} orders={orders} customerName={customerName} customers={customers} />
         )}
-        {view === "catalog" && levelCan(currentUser?.level, "catalog") && (
-          <CatalogView products={products} saveProducts={setAndSave.products} productTypes={productTypes} productTypeName={productTypeName} />
-        )}
-        {view === "priceList" && levelCan(currentUser?.level, "priceList") && (
-          <PriceListView priceList={priceList} savePriceList={setAndSave.priceList} products={products} productName={productName} customers={customers} customerName={customerName} />
-        )}
-        {view === "proformaInvoices" && levelCan(currentUser?.level, "proformaInvoices") && (
-          <ProformaInvoicesView proformaInvoices={proformaInvoices} saveProformaInvoices={setAndSave.proformaInvoices} customers={customers} customerName={customerName} products={products} productName={productName} priceFor={priceFor} />
-        )}
-        {view === "productionRequests" && levelCan(currentUser?.level, "productionRequests") && (
-          <ProductionRequestsView productionRequests={productionRequests} saveProductionRequests={setAndSave.productionRequests} proformaInvoices={proformaInvoices} customers={customers} customerName={customerName} products={products} productName={productName} samples={samples} />
-        )}
-        {view === "productionOrders" && levelCan(currentUser?.level, "productionOrders") && (
-          <ProductionOrdersView productionOrders={productionOrders} saveProductionOrders={setAndSave.productionOrders} productionRequests={productionRequests} products={products} productName={productName} testItems={testItems} saveTestItems={setAndSave.testItems} />
-        )}
-        {view === "testItems" && levelCan(currentUser?.level, "testItems") && (
-          <TestItemsView testItems={testItems} saveTestItems={setAndSave.testItems} productionOrders={productionOrders} products={products} productName={productName} />
-        )}
       </div></div>
 
       {levelCan(currentUser?.level, "ai", "view") && <FloatingAIAssistant
@@ -1848,26 +1799,32 @@ function Dashboard({ customers, quotes, orders, samples, shipments, customerName
   const todayIso = todayStr();
   const todayTasks = openTasks.filter((t) => t.deadline === todayIso);
 
-  const stat = (label, value, tone) => (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 18, flex: 1 }}>
-      <div style={{ fontSize: 12.5, color: COLORS.inkSoft, fontWeight: 600, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontFamily: FONT_HEAD, fontSize: 26, fontWeight: 700, color: tone || COLORS.ink }}>{value}</div>
+  const stat = (label, value, tone, Icon) => (
+    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 16, flex: 1, minWidth: 150, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+      <div>
+        <div style={{ fontSize: 12.5, color: COLORS.inkSoft, fontWeight: 600, marginBottom: 6 }}>{label}</div>
+        <div style={{ fontFamily: FONT_HEAD, fontSize: 24, fontWeight: 700, color: tone || COLORS.ink }}>{value}</div>
+      </div>
+      {Icon && <div style={{ width: 32, height: 32, borderRadius: 9, background: (tone || COLORS.wood) + "1A", color: tone || COLORS.wood, display: "grid", placeItems: "center", flexShrink: 0 }}><Icon size={16} /></div>}
     </div>
   );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Overview</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+        <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><LayoutDashboard size={22} /></div>
+        <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Overview</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Snapshot of customers, quotes, orders, and production status.</div></div>
+      </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        {stat("Customers", customers.length)}
-        {stat("Open quotes", `${openQuotes.length} · ${money(pipelineValue)}`)}
-        {stat("Active orders", `${activeOrders.length} · ${money(activeOrderValue)}`, COLORS.wood)}
-        {stat("Products in progress", samples.filter((s) => s.stage && s.stage !== "Completed").length, COLORS.teal)}
-        {stat("On-time product rate", onTimeRate === null ? "—" : `${onTimeRate}%`, onTimeRate === null ? COLORS.ink : onTimeRate >= 80 ? COLORS.green : COLORS.red)}
-        {stat("Overdue materials", overduePreps.length, overduePreps.length ? COLORS.red : COLORS.green)}
-        {stat("Overdue tasks", overdueTasks.length, overdueTasks.length ? COLORS.red : COLORS.green)}
-        {stat("Tasks due today", todayTasks.length, todayTasks.length ? COLORS.amber : COLORS.green)}
+        {stat("Customers", customers.length, COLORS.wood, Users)}
+        {stat("Open quotes", `${openQuotes.length} · ${money(pipelineValue)}`, COLORS.wood, FileText)}
+        {stat("Active orders", `${activeOrders.length} · ${money(activeOrderValue)}`, COLORS.wood, ShoppingCart)}
+        {stat("Products in progress", samples.filter((s) => s.stage && s.stage !== "Completed").length, COLORS.teal, Boxes)}
+        {stat("On-time product rate", onTimeRate === null ? "—" : `${onTimeRate}%`, onTimeRate === null ? COLORS.inkSoft : onTimeRate >= 80 ? COLORS.green : COLORS.red, CheckCircle2)}
+        {stat("Overdue materials", overduePreps.length, overduePreps.length ? COLORS.red : COLORS.green, AlertCircle)}
+        {stat("Overdue tasks", overdueTasks.length, overdueTasks.length ? COLORS.red : COLORS.green, AlertCircle)}
+        {stat("Tasks due today", todayTasks.length, todayTasks.length ? COLORS.amber : COLORS.green, CalendarDays)}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 16 }}>
@@ -1963,8 +1920,11 @@ function CustomersView({ customers, save, quotes, orders }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Customers</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Users size={22} /></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Customers</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Manage customer accounts and track their quotes and orders.</div></div>
+        </div>
         <Button onClick={startNew}><Plus size={15} /> New customer</Button>
       </div>
 
@@ -2033,549 +1993,6 @@ function CustomersView({ customers, save, quotes, orders }) {
 
 /* ---------------- Quotes ---------------- */
 
-function ProductLineItemsEditor({ items, onChange, products, showPrice, onProductChange }) {
-  const update = (idx, patch) => onChange(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  const add = () => onChange([...items, { id: "li" + Date.now() + Math.random().toString(36).slice(2, 6), productId: products[0]?.id || "", qty: 1, unitPrice: 0 }]);
-  const remove = (idx) => onChange(items.filter((_, i) => i !== idx));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {items.map((it, idx) => (
-        <div key={it.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Select
-            value={it.productId}
-            onChange={(e) => { const productId = e.target.value; update(idx, { productId }); if (onProductChange) onProductChange(idx, productId); }}
-            style={{ flex: 2 }}
-          >
-            {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
-          <Input type="number" value={it.qty} onChange={(e) => update(idx, { qty: e.target.value === "" ? "" : Number(e.target.value) })} placeholder="Qty" style={{ width: 90 }} />
-          {showPrice && <Input type="number" step="0.01" value={it.unitPrice} onChange={(e) => update(idx, { unitPrice: e.target.value === "" ? "" : Number(e.target.value) })} placeholder="Unit price" style={{ width: 120 }} />}
-          <Button small variant="danger" onClick={() => remove(idx)}><Trash2 size={13} /></Button>
-        </div>
-      ))}
-      <Button small variant="subtle" onClick={add}><Plus size={13} /> Add line</Button>
-    </div>
-  );
-}
-
-function CatalogView({ products, saveProducts, productTypes, productTypeName }) {
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const startNew = () => { setEditing({ id: "", code: "", name: "", productTypeId: productTypes[0]?.id || "", description: "", status: "Active" }); setShowForm(true); };
-  const startEdit = (p) => { setEditing({ ...p }); setShowForm(true); };
-  const remove = (id) => { if (!confirm("Delete this product?")) return; saveProducts(products.filter((p) => p.id !== id)); };
-
-  const submit = (e) => {
-    e.preventDefault();
-    if (editing.id) saveProducts(products.map((p) => (p.id === editing.id ? editing : p)));
-    else saveProducts([...products, { ...editing, id: nextId(products, "PD", 4) }]);
-    setShowForm(false);
-    setEditing(null);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Catalog</h1>
-        <Button onClick={startNew}><Plus size={15} /> New product</Button>
-      </div>
-      {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : "New product"}>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-              <Field label="Code"><Input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value })} /></Field>
-              <Field label="Name"><Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
-              <Field label="Category">
-                <Select value={editing.productTypeId} onChange={(e) => setEditing({ ...editing, productTypeId: e.target.value })}>
-                  <option value="">—</option>
-                  {productTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </Select>
-              </Field>
-            </div>
-            <Field label="Description"><TextArea rows={2} value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></Field>
-            <Field label="Status">
-              <Select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </Select>
-            </Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button type="button" onClick={submit}>Save</Button>
-              <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-      <Panel>
-        <Table
-          columns={[
-            { key: "code", label: "Code" },
-            { key: "name", label: "Name" },
-            { key: "category", label: "Category", render: (p) => productTypeName(p.productTypeId) || "—" },
-            { key: "status", label: "Status", render: (p) => <Badge tone={p.status === "Active" ? "green" : "wood"}>{p.status}</Badge> },
-            { key: "actions", label: "", align: "right", render: (p) => (
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                <Button small variant="subtle" onClick={() => startEdit(p)}>Edit</Button>
-                <Button small variant="danger" onClick={() => remove(p.id)}>Delete</Button>
-              </div>
-            ) },
-          ]}
-          rows={products}
-          empty="No products yet. Add your product catalog here — price list and PI both pick from this list."
-        />
-      </Panel>
-    </div>
-  );
-}
-
-function PriceListView({ priceList, savePriceList, products, productName, customers, customerName }) {
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const startNew = () => { setEditing({ id: "", productId: products[0]?.id || "", customerId: "", unitPrice: 0, currency: "USD", effectiveDate: new Date().toISOString().slice(0, 10), notes: "" }); setShowForm(true); };
-  const startEdit = (p) => { setEditing({ ...p }); setShowForm(true); };
-  const remove = (id) => { if (!confirm("Delete this price?")) return; savePriceList(priceList.filter((p) => p.id !== id)); };
-
-  const submit = (e) => {
-    e.preventDefault();
-    if (editing.id) savePriceList(priceList.map((p) => (p.id === editing.id ? editing : p)));
-    else savePriceList([...priceList, { ...editing, id: nextId(priceList, "PL", 4) }]);
-    setShowForm(false);
-    setEditing(null);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Price List</h1>
-        <Button onClick={startNew} disabled={!products.length}><Plus size={15} /> New price</Button>
-      </div>
-      {!products.length && <Panel><div style={{ color: COLORS.inkSoft, fontSize: 14 }}>Add products to the Catalog first — prices are linked to a product.</div></Panel>}
-      {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : "New price"}>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-              <Field label="Product">
-                <Select value={editing.productId} onChange={(e) => setEditing({ ...editing, productId: e.target.value })}>
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </Select>
-              </Field>
-              <Field label="Customer (optional)">
-                <Select value={editing.customerId} onChange={(e) => setEditing({ ...editing, customerId: e.target.value })}>
-                  <option value="">General price</option>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </Select>
-              </Field>
-              <Field label="Unit price"><Input type="number" step="0.01" value={editing.unitPrice} onChange={(e) => setEditing({ ...editing, unitPrice: e.target.value === "" ? "" : Number(e.target.value) })} /></Field>
-              <Field label="Effective date"><Input type="date" value={editing.effectiveDate} onChange={(e) => setEditing({ ...editing, effectiveDate: e.target.value })} /></Field>
-            </div>
-            <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button type="button" onClick={submit}>Save</Button>
-              <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-      <Panel>
-        <Table
-          columns={[
-            { key: "product", label: "Product", render: (p) => productName(p.productId) },
-            { key: "customer", label: "Customer", render: (p) => (p.customerId ? customerName(p.customerId) : "General") },
-            { key: "unitPrice", label: "Unit price", render: (p) => money(p.unitPrice) },
-            { key: "effectiveDate", label: "Effective date" },
-            { key: "actions", label: "", align: "right", render: (p) => (
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                <Button small variant="subtle" onClick={() => startEdit(p)}>Edit</Button>
-                <Button small variant="danger" onClick={() => remove(p.id)}>Delete</Button>
-              </div>
-            ) },
-          ]}
-          rows={priceList}
-          empty="No prices yet."
-        />
-      </Panel>
-    </div>
-  );
-}
-
-function ProformaInvoicesView({ proformaInvoices, saveProformaInvoices, customers, customerName, products, productName, priceFor }) {
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const startNew = () => {
-    setEditing({ id: "", customerId: customers[0]?.id || "", quoteId: "", date: new Date().toISOString().slice(0, 10), validUntil: "", status: "Draft", notes: "", items: [] });
-    setShowForm(true);
-  };
-  const startEdit = (pi) => { setEditing({ ...pi, items: pi.items.map((i) => ({ ...i })) }); setShowForm(true); };
-  const remove = (id) => { if (!confirm("Delete this PI?")) return; saveProformaInvoices(proformaInvoices.filter((p) => p.id !== id)); };
-
-  const onProductChange = (idx, productId) => {
-    const price = priceFor(productId, editing.customerId);
-    setEditing((cur) => ({ ...cur, items: cur.items.map((it, i) => (i === idx ? { ...it, productId, unitPrice: price } : it)) }));
-  };
-
-  const submit = (e) => {
-    e.preventDefault();
-    if (editing.id) saveProformaInvoices(proformaInvoices.map((p) => (p.id === editing.id ? editing : p)));
-    else saveProformaInvoices([...proformaInvoices, { ...editing, id: nextId(proformaInvoices, "PI", 4) }]);
-    setShowForm(false);
-    setEditing(null);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Proforma Invoices</h1>
-        <Button onClick={startNew} disabled={!customers.length || !products.length}><Plus size={15} /> New PI</Button>
-      </div>
-      {!products.length && <Panel><div style={{ color: COLORS.inkSoft, fontSize: 14 }}>Add products to the Catalog first.</div></Panel>}
-      {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : "New PI"}>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-              <Field label="Customer">
-                <Select value={editing.customerId} onChange={(e) => setEditing({ ...editing, customerId: e.target.value })}>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </Select>
-              </Field>
-              <Field label="PI date"><Input type="date" value={editing.date} onChange={(e) => setEditing({ ...editing, date: e.target.value })} /></Field>
-              <Field label="Valid until"><Input type="date" value={editing.validUntil} onChange={(e) => setEditing({ ...editing, validUntil: e.target.value })} /></Field>
-              <Field label="Status">
-                <Select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-                  <option value="Draft">Draft</option>
-                  <option value="Sent">Sent</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Cancelled">Cancelled</option>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Line items (giá tự lấy từ Price List theo khách, sửa tay được)">
-              <ProductLineItemsEditor items={editing.items} onChange={(items) => setEditing({ ...editing, items })} products={products} showPrice onProductChange={onProductChange} />
-            </Field>
-            <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button type="button" onClick={submit}>Save</Button>
-              <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-      <Panel>
-        <Table
-          columns={[
-            { key: "id", label: "PI #" },
-            { key: "customer", label: "Customer", render: (p) => customerName(p.customerId) },
-            { key: "date", label: "Date" },
-            { key: "total", label: "Total", render: (p) => money(lineTotal(p.items)) },
-            { key: "status", label: "Status", render: (p) => <Badge tone={p.status === "Confirmed" ? "green" : p.status === "Cancelled" ? "red" : "wood"}>{p.status}</Badge> },
-            { key: "actions", label: "", align: "right", render: (p) => (
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                <Button small variant="subtle" onClick={() => startEdit(p)}>Edit</Button>
-                <Button small variant="danger" onClick={() => remove(p.id)}>Delete</Button>
-              </div>
-            ) },
-          ]}
-          rows={proformaInvoices}
-          empty="No PI yet."
-        />
-      </Panel>
-    </div>
-  );
-}
-
-function ProductionRequestsView({ productionRequests, saveProductionRequests, proformaInvoices, customers, customerName, products, productName, samples }) {
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const startNew = (type) => {
-    setEditing({ id: "", type, piId: "", customerId: customers[0]?.id || "", sampleId: "", status: "Pending", notes: "", items: [] });
-    setShowForm(true);
-  };
-  const startEdit = (r) => { setEditing({ ...r, items: r.items.map((i) => ({ ...i })) }); setShowForm(true); };
-  const remove = (id) => { if (!confirm("Delete this production request?")) return; saveProductionRequests(productionRequests.filter((r) => r.id !== id)); };
-
-  const applyPi = (piId) => {
-    const pi = proformaInvoices.find((p) => p.id === piId);
-    if (!pi) { setEditing({ ...editing, piId: "" }); return; }
-    setEditing({ ...editing, piId, customerId: pi.customerId, items: pi.items.map((i) => ({ id: "li" + Date.now() + Math.random().toString(36).slice(2, 6), productId: i.productId, qty: i.qty })) });
-  };
-
-  const submit = (e) => {
-    e.preventDefault();
-    if (editing.id) saveProductionRequests(productionRequests.map((r) => (r.id === editing.id ? editing : r)));
-    else saveProductionRequests([...productionRequests, { ...editing, id: nextId(productionRequests, "DN", 4) }]);
-    setShowForm(false);
-    setEditing(null);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Production Requests (ĐNSX)</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="subtle" onClick={() => startNew("sample")}><Plus size={15} /> New sample DNSX</Button>
-          <Button onClick={() => startNew("mass")}><Plus size={15} /> New mass DNSX</Button>
-        </div>
-      </div>
-
-      {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : `New ${editing.type === "sample" ? "sample" : "mass"} DNSX`}>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {editing.type === "sample" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field label="Customer">
-                  <Select value={editing.customerId} onChange={(e) => setEditing({ ...editing, customerId: e.target.value, sampleId: "" })}>
-                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Linked sample record">
-                  <Select value={editing.sampleId} onChange={(e) => setEditing({ ...editing, sampleId: e.target.value })}>
-                    <option value="">—</option>
-                    {samples.filter((s) => s.customerId === editing.customerId).map((s) => <option key={s.id} value={s.id}>{s.id} — {s.name}</option>)}
-                  </Select>
-                </Field>
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field label="Tạo từ PI (tuỳ chọn)">
-                  <Select value={editing.piId} onChange={(e) => applyPi(e.target.value)}>
-                    <option value="">— DNSX thường (không qua PI) —</option>
-                    {proformaInvoices.map((pi) => <option key={pi.id} value={pi.id}>{pi.id} — {customerName(pi.customerId)}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Customer">
-                  <Select value={editing.customerId} onChange={(e) => setEditing({ ...editing, customerId: e.target.value })} disabled={!!editing.piId}>
-                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </Select>
-                </Field>
-              </div>
-            )}
-            {editing.type === "mass" && (
-              <Field label="Line items">
-                <ProductLineItemsEditor items={editing.items} onChange={(items) => setEditing({ ...editing, items })} products={products} />
-              </Field>
-            )}
-            <Field label="Status">
-              <Select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-              </Select>
-            </Field>
-            <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button type="button" onClick={submit}>Save</Button>
-              <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-
-      <Panel>
-        <Table
-          columns={[
-            { key: "id", label: "DNSX #" },
-            { key: "type", label: "Type", render: (r) => <Badge tone={r.type === "sample" ? "amber" : "wood"}>{r.type === "sample" ? "Sample" : "Mass"}</Badge> },
-            { key: "customer", label: "Customer", render: (r) => customerName(r.customerId) },
-            { key: "source", label: "From PI", render: (r) => r.piId || "—" },
-            { key: "items", label: "Products", render: (r) => (r.type === "sample" ? (r.sampleId || "—") : (r.items?.length ? `${r.items.length} item(s)` : "—")) },
-            { key: "status", label: "Status", render: (r) => <Badge tone={r.status === "Approved" ? "green" : r.status === "Rejected" ? "red" : "wood"}>{r.status}</Badge> },
-            { key: "actions", label: "", align: "right", render: (r) => (
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                <Button small variant="subtle" onClick={() => startEdit(r)}>Edit</Button>
-                <Button small variant="danger" onClick={() => remove(r.id)}>Delete</Button>
-              </div>
-            ) },
-          ]}
-          rows={productionRequests}
-          empty="No production requests yet."
-        />
-      </Panel>
-    </div>
-  );
-}
-
-function ProductionOrdersView({ productionOrders, saveProductionOrders, productionRequests, products, productName, testItems, saveTestItems }) {
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const approvedRequests = productionRequests.filter((r) => r.status === "Approved");
-
-  const startNew = () => {
-    const req = approvedRequests[0];
-    setEditing({ id: "", productionRequestId: req?.id || "", status: "Planned", notes: "", items: (req?.items || []).map((i) => ({ id: "li" + Date.now() + Math.random().toString(36).slice(2, 6), productId: i.productId, qty: i.qty, readyDate: "" })) });
-    setShowForm(true);
-  };
-  const startEdit = (o) => { setEditing({ ...o, items: o.items.map((i) => ({ ...i })) }); setShowForm(true); };
-  const remove = (id) => { if (!confirm("Delete this production order?")) return; saveProductionOrders(productionOrders.filter((o) => o.id !== id)); };
-
-  const applyRequest = (reqId) => {
-    const req = productionRequests.find((r) => r.id === reqId);
-    setEditing({ ...editing, productionRequestId: reqId, items: (req?.items || []).map((i) => ({ id: "li" + Date.now() + Math.random().toString(36).slice(2, 6), productId: i.productId, qty: i.qty, readyDate: "" })) });
-  };
-
-  const submit = (e) => {
-    e.preventDefault();
-    if (editing.id) saveProductionOrders(productionOrders.map((o) => (o.id === editing.id ? editing : o)));
-    else saveProductionOrders([...productionOrders, { ...editing, id: nextId(productionOrders, "LS", 4) }]);
-    setShowForm(false);
-    setEditing(null);
-  };
-
-  const setItemReadyDate = (idx, readyDate) => setEditing({ ...editing, items: editing.items.map((it, i) => (i === idx ? { ...it, readyDate } : it)) });
-
-  const sendToTest = (order, item) => {
-    const testId = nextId(testItems, "TI", 4);
-    saveTestItems([...testItems, {
-      id: testId, productionOrderItemId: item.id, productId: item.productId,
-      sentDate: new Date().toISOString().slice(0, 10), testPurpose: "", expectedReturnDate: "", returnedDate: "", status: "Sent", notes: `From order ${order.id}`,
-    }]);
-    alert(`Created test item ${testId} for ${productName(item.productId)}.`);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Production Orders (LSX)</h1>
-        <Button onClick={startNew} disabled={!approvedRequests.length}><Plus size={15} /> New LSX</Button>
-      </div>
-      {!approvedRequests.length && <Panel><div style={{ color: COLORS.inkSoft, fontSize: 14 }}>No Approved production request yet — approve a DNSX first.</div></Panel>}
-
-      {showForm && (
-        <Panel title={editing.id ? `Edit ${editing.id}` : "New LSX"}>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="From production request (DNSX)">
-                <Select value={editing.productionRequestId} onChange={(e) => applyRequest(e.target.value)}>
-                  {approvedRequests.map((r) => <option key={r.id} value={r.id}>{r.id} ({r.type})</option>)}
-                </Select>
-              </Field>
-              <Field label="Status">
-                <Select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-                  <option value="Planned">Planned</option>
-                  <option value="InProgress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Line items — ngày có hàng theo từng sản phẩm">
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {editing.items.map((it, idx) => (
-                  <div key={it.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <div style={{ flex: 2, fontSize: 13 }}>{productName(it.productId)} × {it.qty}</div>
-                    <Input type="date" value={it.readyDate} onChange={(e) => setItemReadyDate(idx, e.target.value)} style={{ width: 160 }} />
-                  </div>
-                ))}
-              </div>
-            </Field>
-            <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button type="button" onClick={submit}>Save</Button>
-              <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-
-      <Panel>
-        <Table
-          columns={[
-            { key: "id", label: "LSX #" },
-            { key: "request", label: "From DNSX", render: (o) => o.productionRequestId },
-            { key: "items", label: "Products", render: (o) => (o.items?.length ? `${o.items.length} item(s)` : "—") },
-            { key: "status", label: "Status", render: (o) => <Badge tone={o.status === "Completed" ? "green" : "wood"}>{o.status}</Badge> },
-            { key: "actions", label: "", align: "right", render: (o) => (
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {o.items?.filter((it) => it.readyDate).map((it) => (
-                  <Button key={it.id} small variant="subtle" onClick={() => sendToTest(o, it)}>Send {productName(it.productId)} to test</Button>
-                ))}
-                <Button small variant="subtle" onClick={() => startEdit(o)}>Edit</Button>
-                <Button small variant="danger" onClick={() => remove(o.id)}>Delete</Button>
-              </div>
-            ) },
-          ]}
-          rows={productionOrders}
-          empty="No production orders yet."
-        />
-      </Panel>
-    </div>
-  );
-}
-
-function TestItemsView({ testItems, saveTestItems, productionOrders, products, productName }) {
-  const [editing, setEditing] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const startEdit = (t) => { setEditing({ ...t }); setShowForm(true); };
-  const remove = (id) => { if (!confirm("Delete this test item?")) return; saveTestItems(testItems.filter((t) => t.id !== id)); };
-
-  const submit = (e) => {
-    e.preventDefault();
-    saveTestItems(testItems.map((t) => (t.id === editing.id ? editing : t)));
-    setShowForm(false);
-    setEditing(null);
-  };
-
-  const markReturned = (t) => saveTestItems(testItems.map((x) => (x.id === t.id ? { ...x, status: "Returned", returnedDate: new Date().toISOString().slice(0, 10) } : x)));
-
-  const isOverdue = (t) => t.status === "Sent" && t.expectedReturnDate && t.expectedReturnDate < new Date().toISOString().slice(0, 10);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Test Items</h1>
-      </div>
-      <div style={{ color: COLORS.inkSoft, fontSize: 13 }}>Hàng mang đi test được tạo từ trang Production Orders (nút "Send to test"). Ở đây chỉ theo dõi deadline và cập nhật trạng thái trả về kho.</div>
-
-      {showForm && editing && (
-        <Panel title={`Edit ${editing.id}`}>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-              <Field label="Test purpose"><Input value={editing.testPurpose} onChange={(e) => setEditing({ ...editing, testPurpose: e.target.value })} /></Field>
-              <Field label="Expected return date (deadline)"><Input type="date" value={editing.expectedReturnDate} onChange={(e) => setEditing({ ...editing, expectedReturnDate: e.target.value })} /></Field>
-              <Field label="Status">
-                <Select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-                  <option value="Sent">Sent</option>
-                  <option value="Returned">Returned</option>
-                  <option value="Lost">Lost</option>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Notes"><TextArea rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button type="button" onClick={submit}>Save</Button>
-              <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-
-      <Panel>
-        <Table
-          columns={[
-            { key: "id", label: "Test #" },
-            { key: "product", label: "Product", render: (t) => productName(t.productId) },
-            { key: "sentDate", label: "Sent date" },
-            { key: "expectedReturnDate", label: "Deadline", render: (t) => <span style={{ color: isOverdue(t) ? COLORS.red : COLORS.ink }}>{t.expectedReturnDate || "—"}</span> },
-            { key: "status", label: "Status", render: (t) => <Badge tone={t.status === "Returned" ? "green" : isOverdue(t) ? "red" : "wood"}>{t.status}</Badge> },
-            { key: "actions", label: "", align: "right", render: (t) => (
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                {t.status === "Sent" && <Button small variant="subtle" onClick={() => markReturned(t)}>Mark returned</Button>}
-                <Button small variant="subtle" onClick={() => startEdit(t)}>Edit</Button>
-                <Button small variant="danger" onClick={() => remove(t.id)}>Delete</Button>
-              </div>
-            ) },
-          ]}
-          rows={testItems}
-          empty="No test items yet."
-        />
-      </Panel>
-    </div>
-  );
-}
-
 function QuotesView({ quotes, saveQuotes, customers, customerName, orders, saveOrders }) {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -2625,8 +2042,11 @@ function QuotesView({ quotes, saveQuotes, customers, customerName, orders, saveO
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Quotes</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><FileText size={22} /></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Quotes</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Create and track quotes before they convert to orders.</div></div>
+        </div>
         <Button onClick={startNew}><Plus size={15} /> New quote</Button>
       </div>
 
@@ -2735,8 +2155,11 @@ function OrdersView({ orders, saveOrders, customers, customerName, samples }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Orders</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><ShoppingCart size={22} /></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Orders</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Manage confirmed orders through to shipment.</div></div>
+        </div>
         <Button onClick={startNew}><Plus size={15} /> New order</Button>
       </div>
 
@@ -6002,7 +5425,10 @@ function MaterialsView({ materialLists, saveList }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Materials</h1><div style={{ marginTop: 4, fontSize: 12, color: COLORS.inkSoft }}>Manage master data and import large material lists directly from Excel or CSV.</div></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66`, flexShrink: 0 }}><Palette size={22} /></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Materials</h1><div style={{ marginTop: 4, fontSize: 12, color: COLORS.inkSoft }}>Manage master data and import large material lists directly from Excel or CSV.</div></div>
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Button small variant="subtle" onClick={downloadTemplate}><Download size={14} /> Template</Button>
           <Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button>
@@ -6410,8 +5836,11 @@ function ShippingView({ shipments, saveShipments, orders, customerName, customer
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Shipping</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Truck size={22} /></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 26, margin: 0 }}>Shipping</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track shipments linked to confirmed orders.</div></div>
+        </div>
         <Button onClick={startNew} disabled={!orders.length}><Plus size={15} /> New shipment</Button>
       </div>
 
