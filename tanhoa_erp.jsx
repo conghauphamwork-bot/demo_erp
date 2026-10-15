@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import QRCode from "qrcode";
 import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical } from "lucide-react";
 import SampleTestTrackingView from "./SampleTestTrackingView.jsx";
+import QcView, { QcProductSection } from "./QcView.jsx";
+import ProductChangeHistory from "./ProductChangeHistory.jsx";
 import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
@@ -957,11 +959,11 @@ function levelCan(level, module, action = "view") {
   }
 
   if (l === 2) {
-    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests"].includes(module)) return false;
+    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests", "qc"].includes(module)) return false;
     if (["delete", "import"].includes(action)) return false;
     return true;
   }
-  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests"].includes(module);
+  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests", "qc"].includes(module);
 }
 
   const [loaded, setLoaded] = useState(false);
@@ -1160,7 +1162,7 @@ function levelCan(level, module, action = "view") {
   useEffect(() => {
     const allowedForLevel = Number(currentUser?.level ?? 3) === 1
       ? ["samples", "tasks", "calendar"]
-      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders", "sampleTests"];
+      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders", "sampleTests", "qc"];
     if (!allowedForLevel.includes(view)) {
       setView(allowedForLevel[0] || "samples");
     }
@@ -1205,6 +1207,7 @@ function levelCan(level, module, action = "view") {
     { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
     { key: "manufacturingOrders", label: "Manufacturing Orders", icon: Factory, module: "manufacturingOrders" },
     { key: "sampleTests", label: "Theo dõi mẫu test", icon: FlaskConical, module: "sampleTests" },
+    { key: "qc", label: "QA/QC", icon: ShieldCheck, module: "qc" },
   ].filter(n => levelCan(currentUser?.level, n.module, "view"));
 
   return (
@@ -1446,7 +1449,7 @@ function levelCan(level, module, action = "view") {
           const groups = [
             ["GENERAL", NAV.filter(n => ["samples","tasks","calendar"].includes(n.module))],
             ["SALES", NAV.filter(n => ["dashboard","customers","quotes","orders"].includes(n.module))],
-            ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping","manufacturingOrders","sampleTests"].includes(n.module))],
+            ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping","manufacturingOrders","sampleTests","qc"].includes(n.module))],
             ["TOOLS", levelCan(currentUser?.level, "backup", "export") ? [{ key: "backup", label: "Export Data", icon: Download, onClick: handleExportBackup }] : []],
           ];
           return groups.map(([group, items]) => items.length ? <div key={group} style={{ marginTop: 18 }}>
@@ -1525,6 +1528,25 @@ function levelCan(level, module, action = "view") {
             canEdit={levelCan(currentUser?.level, "sampleTests", "edit")}
             canDelete={levelCan(currentUser?.level, "sampleTests", "delete")}
             canSettings={Number(currentUser?.level ?? 3) === 0}
+            ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }}
+            onCreateMasterProduct={(d) => {
+              // v57: "Chuyển sang Products" — test tracking → master product
+              const id = nextId(samples, "SA", 5);
+              setAndSave.samples([...samples, { ...BLANK_PRODUCT, id, erpNo: d.erpNo || "", name: d.name || d.erpNo || "(unnamed product)", customerId: d.customerId || "", image: d.image || "", manufacturingOrderNo: d.manufacturingOrderNo || "", requiredComponents: [], noteHistory: [], revisions: [] }]);
+              return id;
+            }}
+          />
+        )}
+        {view === "qc" && levelCan(currentUser?.level, "qc") && (
+          <QcView
+            samples={samples}
+            customers={customers}
+            customerName={customerName}
+            currentUser={currentUser}
+            canEdit={levelCan(currentUser?.level, "qc", "edit")}
+            canDelete={levelCan(currentUser?.level, "qc", "delete")}
+            canSettings={Number(currentUser?.level ?? 3) === 0}
+            sampleStages={SAMPLE_STAGES}
             ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }}
           />
         )}
@@ -4856,7 +4878,9 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
 
       <div style={{ marginTop: 20 }}><SectionHeading>Notes & follow-up history</SectionHeading><div style={{ display: "flex", gap: 8, marginTop: 10 }}><TextArea rows={2} value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Add a follow-up note…" /><Button small onClick={addNote}><Plus size={13} /> Add note</Button></div><div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>{(s.noteHistory || []).length === 0 ? <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No notes yet.</div> : (s.noteHistory || []).map((n) => <div key={n.id} style={{ background: COLORS.bg, borderRadius: 8, padding: "9px 11px" }}><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{new Date(n.createdAt).toLocaleString()}</div><div style={{ fontSize: 13.5, marginTop: 3, whiteSpace: "pre-wrap" }}>{n.text}</div></div>)}</div></div>
 
-      <div style={{ marginTop: 20 }}><SectionHeading>Revision history</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>{(s.revisions || []).map((r) => <div key={r.id} style={{ display: "flex", gap: 12, borderBottom: `1px solid ${COLORS.line}`, paddingBottom: 10 }}>{r.photo && <img src={r.photo} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }} />}<div><div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>{r.date}</div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.changeReason}</div>{r.note && <div style={{ fontSize: 13, color: COLORS.inkSoft }}>{r.note}</div>}</div></div>)}{(s.revisions || []).length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No revisions logged yet.</div>}<div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr", gap: 8 }}><Input type="date" value={newRevision.date} onChange={(e) => setNewRevision({ ...newRevision, date: e.target.value })} /><Input placeholder="What changed?" value={newRevision.changeReason} onChange={(e) => setNewRevision({ ...newRevision, changeReason: e.target.value })} /><Input placeholder="Photo URL (optional)" value={newRevision.photo} onChange={(e) => setNewRevision({ ...newRevision, photo: e.target.value })} /></div><div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8 }}><Input placeholder="Note (optional)" value={newRevision.note} onChange={(e) => setNewRevision({ ...newRevision, note: e.target.value })} /><Button small onClick={addRevision}><Plus size={13} /> Add revision</Button></div></div></div>
+      <QcProductSection ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }} sample={s} customerName={customerName} sampleStages={SAMPLE_STAGES} SectionHeading={SectionHeading} />
+
+      <ProductChangeHistory ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }} sample={s} onSaveSample={onSaveSample} SectionHeading={SectionHeading} />
 
       <div style={{ marginTop: 20 }}><SectionHeading>Related tasks</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{relatedTasks.length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No tasks linked to this product yet.</div>}{relatedTasks.map((t) => <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.bg, padding: "8px 10px", borderRadius: 8, fontSize: 13 }}><div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.type || "Daily"} · {t.referencePerson || "—"}{t.deadline ? ` · ${t.deadline}` : ""}</div></div><button onClick={() => cycleTaskStatus(t)} style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}><Badge tone={taskStatusTone(t.status)}>{t.status}</Badge></button></div>)}<div style={{ display: "grid", gridTemplateColumns: "1fr 140px auto", gap: 8, marginTop: 4 }}><Input placeholder="Quick add a task for this product…" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} /><Input type="date" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} /><Button small onClick={addRelatedTask}><Plus size={13} /> Add</Button></div></div></div>
     </Panel>

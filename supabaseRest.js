@@ -294,7 +294,7 @@ function colorMasterToApp(r) { return { id: r.id, code: r.code || "", name: r.na
 function taskToApp(r) { return { id: r.id, name: r.name || "", type: r.type || "Daily", description: r.description || "", referencePerson: r.reference_person || "", deadline: r.deadline || "", status: r.status || "To Do", priority: r.priority || "", sampleId: r.sample_id || "", note: r.note || "", image: r.image_url || "" }; }
 function sampleComponentsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, materialName: r.component_name || "", qty: r.qty ?? 1, startDate: r.start_date || "", dueDate: r.target_date || "", status: r.status || "Waiting", photo: r.proof_image_url || "" })); }
 function sampleNotesToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, text: r.note || "", createdAt: r.created_at || new Date().toISOString() })); }
-function sampleRevisionsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, date: r.revision_date || "", changeReason: r.change_reason || "", photo: r.photo_url || "", note: r.note || "" })); }
+function sampleRevisionsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, date: r.revision_date || "", changeReason: r.change_reason || "", photo: r.photo_url || "", note: r.note || "", status: r.status || "Chưa xử lý", processedDate: r.processed_date || "", requestedBy: r.requested_by || "" })); }
 
 function sampleToApp(r) {
   return {
@@ -388,11 +388,23 @@ function massProductionTestSampleToApp(r) {
 
 export async function saveSampleChildren(sample) {
   const notes = (sample.noteHistory || []).map((n) => ({ id: n.id, sample_id: sample.id, note: n.text || "", created_at: n.createdAt || new Date().toISOString() }));
-  const revisions = (sample.revisions || []).map((r) => ({ id: r.id, sample_id: sample.id, revision_date: r.date || null, change_reason: r.changeReason || "", photo_url: r.photo || null, note: r.note || null }));
+  const legacyRevisions = (sample.revisions || []).map((r) => ({ id: r.id, sample_id: sample.id, revision_date: r.date || null, change_reason: r.changeReason || "", photo_url: r.photo || null, note: r.note || null }));
+  // v57: customer change history adds status / processed_date / requested_by.
+  const revisions = legacyRevisions.map((row, i) => {
+    const r = sample.revisions[i];
+    return { ...row, status: r.status || "Chưa xử lý", processed_date: r.processedDate || null, requested_by: r.requestedBy || null };
+  });
   await deleteWhere("sample_notes", "sample_id", sample.id);
   await deleteWhere("sample_revisions", "sample_id", sample.id);
   await upsertRows("sample_notes", notes);
-  await upsertRows("sample_revisions", revisions);
+  try {
+    await upsertRows("sample_revisions", revisions);
+  } catch (err) {
+    // v57 SQL not run yet → the new columns do not exist. Fall back to the old
+    // columns so revision rows (already deleted above) are never lost.
+    if (/PGRST204|status|processed_date|requested_by/i.test(String(err?.message || err))) await upsertRows("sample_revisions", legacyRevisions);
+    else throw err;
+  }
 }
 
 export async function saveJsonRecord(recordType, record) {

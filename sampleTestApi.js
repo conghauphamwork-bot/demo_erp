@@ -16,6 +16,7 @@ export function trackingToApp(r) {
     id: r.id, sampleId: r.sample_id || "", lsxNo: r.lsx_no || "", owner: r.owner || "",
     startDate: r.start_date || "", testDeadline: r.test_deadline || "", weaveOn: r.weave_on || "",
     baselineLockedAt: r.baseline_locked_at || "", status: r.status || "Active", notes: r.notes || "",
+    erpNo: r.erp_no || "", productDescription: r.product_description || "", customerId: r.customer_id || "", imageUrl: r.image_url || "",
     createdAt: r.created_at || "",
   };
 }
@@ -24,6 +25,7 @@ function trackingToRow(x) {
     id: x.id, sample_id: nz(x.sampleId), lsx_no: nz(x.lsxNo), owner: nz(x.owner),
     start_date: nz(x.startDate), test_deadline: nz(x.testDeadline), weave_on: nz(x.weaveOn),
     baseline_locked_at: nz(x.baselineLockedAt), status: x.status || "Active", notes: nz(x.notes),
+    erp_no: nz(x.erpNo), product_description: nz(x.productDescription), customer_id: nz(x.customerId), image_url: nz(x.imageUrl),
     updated_at: new Date().toISOString(),
   };
 }
@@ -31,14 +33,15 @@ export function stepToApp(r) {
   return {
     id: r.id, trackingId: r.tracking_id, stepCode: r.step_code, planDate: r.plan_date || "",
     actualDate: r.actual_date || "", notApplicable: Boolean(r.not_applicable),
-    rescheduleDate: r.reschedule_date || "", note: r.note || "",
+    rescheduleDate: r.reschedule_date || "", note: r.note || "", proofImages: Array.isArray(r.proof_images) ? r.proof_images : [],
   };
 }
 function stepToRow(x) {
   return {
     id: x.id || `${x.trackingId}:${x.stepCode}`, tracking_id: x.trackingId, step_code: x.stepCode,
     plan_date: nz(x.planDate), actual_date: nz(x.actualDate), not_applicable: Boolean(x.notApplicable),
-    reschedule_date: nz(x.rescheduleDate), note: nz(x.note), updated_at: new Date().toISOString(),
+    reschedule_date: nz(x.rescheduleDate), note: nz(x.note), proof_images: Array.isArray(x.proofImages) ? x.proofImages : [],
+    updated_at: new Date().toISOString(),
   };
 }
 export function partToApp(r) {
@@ -47,6 +50,7 @@ export function partToApp(r) {
     qty: r.qty ?? "", unit: r.unit || "", supplier: r.supplier || "", poNo: r.po_no || "",
     promisedDate: r.promised_date || "", rescheduledDate: r.rescheduled_date || "", receivedDate: r.received_date || "",
     iqcResult: r.iqc_result || "Chờ", note: r.note || "", sortOrder: r.sort_order ?? 0, createdAt: r.created_at || "",
+    proofImages: Array.isArray(r.proof_images) ? r.proof_images : [],
   };
 }
 function partToRow(x) {
@@ -55,6 +59,7 @@ function partToRow(x) {
     qty: num(x.qty), unit: nz(x.unit), supplier: nz(x.supplier), po_no: nz(x.poNo),
     promised_date: nz(x.promisedDate), rescheduled_date: nz(x.rescheduledDate), received_date: nz(x.receivedDate),
     iqc_result: x.iqcResult || "Chờ", note: nz(x.note), sort_order: Number(x.sortOrder) || 0,
+    proof_images: Array.isArray(x.proofImages) ? x.proofImages : [],
   };
 }
 export function testToApp(r) {
