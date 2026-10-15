@@ -1160,11 +1160,13 @@ function levelCan(level, module, action = "view") {
         : adapters.masters;
       saveCollection(table, materialLists[key] || [], next, adapter).catch((e) => alert("Material master save failed: " + e.message));
     },
-    manufacturingOrders: (next) => { setManufacturingOrders(next); saveCollectionV58("manufacturing_orders", manufacturingOrders, next, adapters.manufacturingOrders).catch((e) => alert("MO save failed: " + e.message)); },
-    moProductLines: (next) => { setMoProductLines(next); saveCollectionV58("mo_product_lines", moProductLines, next, adapters.moProductLines).catch((e) => alert("MO product line save failed: " + e.message)); },
-    productionApprovals: (next) => { setProductionApprovals(next); saveCollection("production_approvals", productionApprovals, next, adapters.productionApprovals).catch((e) => alert("Approval save failed: " + e.message)); },
-    productionLots: (next) => { setProductionLots(next); saveCollection("production_lots", productionLots, next, adapters.productionLots).catch((e) => alert("Lot save failed: " + e.message)); },
-    massProductionTestSamples: (next) => { setMassProductionTestSamples(next); saveCollection("mass_production_test_samples", massProductionTestSamples, next, adapters.massProductionTestSamples).catch((e) => alert("Test sample save failed: " + e.message)); },
+    manufacturingOrders: (next) => { const prev = manufacturingOrders; setManufacturingOrders(next); return saveCollectionV58("manufacturing_orders", prev, next, adapters.manufacturingOrders).then(() => true).catch((e) => { setManufacturingOrders(prev); alert("Lưu LSX thất bại: " + e.message); return false; }); },
+    moProductLines: (next) => { const prev = moProductLines; setMoProductLines(next); return saveCollectionV58("mo_product_lines", prev, next, adapters.moProductLines).then(() => true).catch((e) => { setMoProductLines(prev); alert("Lưu dòng sản phẩm của LSX thất bại: " + e.message); return false; }); },
+    // Returns true/false so callers can save the MO line only AFTER its approval is stored
+    // (a line must never point to an approval that failed to save). On failure the list is reverted.
+    productionApprovals: (next) => { const prev = productionApprovals; setProductionApprovals(next); return saveCollection("production_approvals", prev, next, adapters.productionApprovals).then(() => true).catch((e) => { setProductionApprovals(prev); alert("Lưu phê duyệt thất bại — dòng sản phẩm CHƯA được thêm vào LSX.\n\n" + e.message); return false; }); },
+    productionLots: (next) => { const prev = productionLots; setProductionLots(next); return saveCollection("production_lots", prev, next, adapters.productionLots).then(() => true).catch((e) => { setProductionLots(prev); alert("Lưu lô thất bại: " + e.message); return false; }); },
+    massProductionTestSamples: (next) => { const prev = massProductionTestSamples; setMassProductionTestSamples(next); return saveCollection("mass_production_test_samples", prev, next, adapters.massProductionTestSamples).then(() => true).catch((e) => { setMassProductionTestSamples(prev); alert("Lưu mẫu test thất bại: " + e.message); return false; }); },
   };
 
   const customerName = useCallback((id) => customers.find((c) => c.id === id)?.name || "—", [customers]);
@@ -6235,36 +6237,51 @@ function ManufacturingOrdersView({
     setShowMoForm(false);
     setEditingMo(null);
   };
-  const removeMo = (mo) => {
+  const removeMo = async (mo) => {
     if (!confirm(`Xóa MO ${mo.moNo}? Các dòng Product, approval, lot, test liên quan cũng sẽ bị xóa.`)) return;
-    const lineIds = linesForMo(mo.id).map((l) => l.id);
-    saveManufacturingOrders(manufacturingOrders.filter((m) => m.id !== mo.id));
-    saveMoProductLines(moProductLines.filter((l) => l.moId !== mo.id));
-    saveMassProductionTestSamples(massProductionTestSamples.filter((t) => t.moId !== mo.id));
-    saveProductionLots(productionLots.filter((l) => !lineIds.includes(l.moProductLineId)));
+    // lines (and their lots / tests / approvals) first, the MO header last — avoids FK errors
+    if (!(await deleteLinesSafely(linesForMo(mo.id)))) return;
+    if ((await saveManufacturingOrders(manufacturingOrders.filter((m) => m.id !== mo.id))) === false) return;
     if (openMoId === mo.id) setOpenMoId(null);
   };
 
   // Approval-before-mass-production gate. Standard = product already approved by
   // customer. Exception = logged approval with a required reason.
-  const addLineStandard = (mo, product, qty, masterProductId = "") => {
+  // Approvals and MO lines reference each other (mo_product_lines.mass_production_approval_id →
+  // production_approvals, and approval.mo_product_line_id → line). Save in a safe order:
+  // 1) approvals WITHOUT the line link, 2) lines, 3) approvals WITH the line link.
+  // If step 2 fails, the new approvals are removed again so no orphan rows are left.
+  const commitApprovalsAndLines = async (newApprovals, newLines) => {
+    const ok1 = await saveProductionApprovals([...productionApprovals, ...newApprovals.map((a) => ({ ...a, moProductLineId: "" }))]);
+    if (ok1 === false) return false;
+    const ok2 = await saveMoProductLines([...moProductLines, ...newLines]);
+    if (ok2 === false) {
+      for (const a of newApprovals) await deleteRow("production_approvals", a.id).catch(() => {});
+      await saveProductionApprovals(productionApprovals);
+      return false;
+    }
+    await saveProductionApprovals([...productionApprovals, ...newApprovals]);
+    return true;
+  };
+
+  const addLineStandard = async (mo, product, qty, masterProductId = "") => {
     const approvalId = newUuid();
     const lineId = newUuid();
-    saveProductionApprovals([...productionApprovals, {
+    const ok = await commitApprovalsAndLines([{
       id: approvalId, productId: product.id, moProductLineId: lineId, approvalType: "Standard",
-      customerConfirmationReference: "", reason: "", approvedBy: currentUser?.full_name || currentUser?.email || "",
+      customerConfirmationReference: "", reason: "", approvedBy: currentUser?.id || "", // uuid column → user id, not the name
       approvedAt: new Date().toISOString(), status: "Approved",
-    }]);
-    saveMoProductLines([...moProductLines, {
+    }], [{
       id: lineId, moId: mo.id, productId: product.id, qtyOrdered: qty || "", unitPrice: "",
       productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "",
       massProductionApprovalId: approvalId, isException: false, masterProductId,
     }]);
+    if (!ok) return;
     setShowAddLine(false); setNewLineProductId(""); setNewLineQty("");
   };
 
   // v58: add every product of the linked PI that is not in this MO yet (qty / price from the PI).
-  const addLinesFromPi = (mo) => {
+  const addLinesFromPi = async (mo) => {
     const piLines = (master?.piLines || []).filter((l) => l.piId === mo.piId);
     const have = new Set(linesForMo(mo.id).map((l) => l.masterProductId).filter(Boolean));
     const todo = piLines.filter((l) => l.masterProductId && !have.has(l.masterProductId));
@@ -6277,11 +6294,10 @@ function ManufacturingOrdersView({
     for (const pl of ok) {
       const m = masterById.get(pl.masterProductId);
       const approvalId = newUuid(), lineId = newUuid();
-      approvals.push({ id: approvalId, productId: m.sourceSampleId, moProductLineId: lineId, approvalType: "Standard", customerConfirmationReference: piById.get(mo.piId)?.piNo || "", reason: "", approvedBy: currentUser?.full_name || currentUser?.email || "", approvedAt: new Date().toISOString(), status: "Approved" });
+      approvals.push({ id: approvalId, productId: m.sourceSampleId, moProductLineId: lineId, approvalType: "Standard", customerConfirmationReference: piById.get(mo.piId)?.piNo || "", reason: "", approvedBy: currentUser?.id || "", approvedAt: new Date().toISOString(), status: "Approved" });
       lines.push({ id: lineId, moId: mo.id, productId: m.sourceSampleId, qtyOrdered: pl.qty ?? "", unitPrice: pl.unitPrice ?? "", productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "", massProductionApprovalId: approvalId, isException: false, masterProductId: m.id });
     }
-    saveProductionApprovals([...productionApprovals, ...approvals]);
-    saveMoProductLines([...moProductLines, ...lines]);
+    await commitApprovalsAndLines(approvals, lines);
   };
 
   const confirmAddLine = () => {
@@ -6304,30 +6320,40 @@ function ManufacturingOrdersView({
     }
   };
 
-  const submitException = (e) => {
+  const submitException = async (e) => {
     e.preventDefault();
     if (!exceptionReason.trim()) { alert("Ngoại lệ bắt buộc phải có lý do."); return; }
     if (!exceptionBy.trim()) { alert("Nhập người phê duyệt ngoại lệ."); return; }
     const approvalId = newUuid();
     const lineId = newUuid();
-    saveProductionApprovals([...productionApprovals, {
+    // approved_by is a uuid column: keep the typed approver name inside the reason text.
+    const ok = await commitApprovalsAndLines([{
       id: approvalId, productId: exceptionFor.productId, moProductLineId: lineId, approvalType: "Exception",
-      customerConfirmationReference: exceptionRef, reason: exceptionReason, approvedBy: exceptionBy,
+      customerConfirmationReference: exceptionRef, reason: `[Người duyệt: ${exceptionBy.trim()}] ${exceptionReason.trim()}`, approvedBy: currentUser?.id || "",
       approvedAt: new Date().toISOString(), status: "Approved",
-    }]);
-    saveMoProductLines([...moProductLines, {
+    }], [{
       id: lineId, moId: openMo.id, productId: exceptionFor.productId, qtyOrdered: exceptionFor.qty || "", unitPrice: "",
       productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "",
       massProductionApprovalId: approvalId, isException: true,
     }]);
+    if (!ok) return;
     setExceptionFor(null); setShowAddLine(false); setNewLineProductId(""); setNewLineQty("");
   };
 
-  const removeLine = (line) => {
+  // Delete lines in FK-safe order: test samples → lots → unlink approvals → lines → approvals.
+  const deleteLinesSafely = async (lines) => {
+    const ids = new Set(lines.map((l) => l.id));
+    const apprIds = new Set(lines.map((l) => l.massProductionApprovalId).filter(Boolean));
+    if ((await saveMassProductionTestSamples(massProductionTestSamples.filter((t) => !ids.has(t.moProductLineId)))) === false) return false;
+    if ((await saveProductionLots(productionLots.filter((l) => !ids.has(l.moProductLineId)))) === false) return false;
+    if (apprIds.size && (await saveProductionApprovals(productionApprovals.map((a) => (apprIds.has(a.id) ? { ...a, moProductLineId: "" } : a)))) === false) return false;
+    if ((await saveMoProductLines(moProductLines.filter((l) => !ids.has(l.id)))) === false) return false;
+    if (apprIds.size) await saveProductionApprovals(productionApprovals.filter((a) => !apprIds.has(a.id)));
+    return true;
+  };
+  const removeLine = async (line) => {
     if (!confirm("Xóa dòng Product này khỏi MO?")) return;
-    saveMoProductLines(moProductLines.filter((l) => l.id !== line.id));
-    saveProductionLots(productionLots.filter((l) => l.moProductLineId !== line.id));
-    saveMassProductionTestSamples(massProductionTestSamples.filter((t) => t.moProductLineId !== line.id));
+    await deleteLinesSafely([line]);
   };
 
   const patchLine = (line, patch) => saveMoProductLines(moProductLines.map((l) => (l.id === line.id ? { ...l, ...patch } : l)));
@@ -6349,7 +6375,7 @@ function ManufacturingOrdersView({
     if (!line) return;
     saveMassProductionTestSamples([...massProductionTestSamples, {
       id: newUuid(), moId: line.moId, productId: line.productId, moProductLineId: line.id, lotId: testLotId || "",
-      pulledQty: testQty, pulledDate: testDate, pulledBy: currentUser?.full_name || currentUser?.email || "",
+      pulledQty: testQty, pulledDate: testDate, pulledBy: currentUser?.id || "",
       testPurpose, testResult, testReportUrl: "", reviewedBy: "", reviewedAt: "", linkedShipmentId: "",
     }]);
     setShowTestForm(false);

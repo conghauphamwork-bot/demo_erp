@@ -287,6 +287,10 @@ function groupBy(rows, key) {
 }
 
 function nullify(value) { return value === "" || value === undefined ? null : value; }
+// approved_by / pulled_by / reviewed_by are uuid columns (user id from profiles). A name such as "Admin"
+// makes Supabase reject the whole row (400 invalid input syntax for type uuid) → send null instead.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function uuidOrNull(value) { return UUID_RE.test(String(value || "").trim()) ? String(value).trim() : null; }
 function customerToApp(r) { return { id: r.id, name: r.name || "", country: r.country || "", contact: r.contact_person || "", email: r.email || "", phone: r.phone || "" }; }
 function simpleMasterToApp(r) { return { id: r.id, code: r.code || "", name: r.name || "" }; }
 // v55 fix: loader for color/finish masters that also carry a reference image.
@@ -359,7 +363,7 @@ export const adapters = {
   productionApprovals: (x) => ({
     id: x.id, product_id: x.productId, mo_product_line_id: nullify(x.moProductLineId), approval_type: x.approvalType || "Standard",
     customer_confirmation_reference: nullify(x.customerConfirmationReference), reason: nullify(x.reason),
-    approved_by: nullify(x.approvedBy), approved_at: x.approvedAt || new Date().toISOString(), status: x.status || "Approved",
+    approved_by: uuidOrNull(x.approvedBy), approved_at: x.approvedAt || new Date().toISOString(), status: x.status || "Approved",
   }),
   productionLots: (x) => ({
     id: x.id, mo_product_line_id: x.moProductLineId, lot_no: x.lotNo || "", qty: x.qty === "" ? null : x.qty,
@@ -367,9 +371,9 @@ export const adapters = {
   }),
   massProductionTestSamples: (x) => ({
     id: x.id, mo_id: x.moId, product_id: x.productId, mo_product_line_id: x.moProductLineId, lot_id: nullify(x.lotId),
-    pulled_qty: x.pulledQty === "" ? null : x.pulledQty, pulled_date: nullify(x.pulledDate), pulled_by: nullify(x.pulledBy),
+    pulled_qty: x.pulledQty === "" ? null : x.pulledQty, pulled_date: nullify(x.pulledDate), pulled_by: uuidOrNull(x.pulledBy),
     test_purpose: nullify(x.testPurpose), test_result: nullify(x.testResult), test_report_url: nullify(x.testReportUrl),
-    reviewed_by: nullify(x.reviewedBy), reviewed_at: nullify(x.reviewedAt), linked_shipment_id: nullify(x.linkedShipmentId),
+    reviewed_by: uuidOrNull(x.reviewedBy), reviewed_at: nullify(x.reviewedAt), linked_shipment_id: nullify(x.linkedShipmentId),
   }),
 };
 
