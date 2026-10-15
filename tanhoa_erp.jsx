@@ -6160,52 +6160,104 @@ function testResultTone(r) {
   return { Pass: "green", Fail: "red", Conditional: "amber" }[r] || "neutral";
 }
 
-/* v58.2: type-to-search product picker (by ERP code / description / id) */
-function ErpSearchPicker({ options, value, onChange, inLine = () => false, limit = 12 }) {
-  const selected = options.find((o) => o.value === value) || null;
+/* v58.3: add many products to an LSX at once — search by ERP, tick, enter qty per product */
+function MultiAddLinesPanel({ options, inLine = () => false, onSubmit, onCancel }) {
   const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState([]); // [{ value, qty }]
+  const [bulkQty, setBulkQty] = useState("");
+  const [exc, setExc] = useState({ reason: "", by: "", ref: "" });
+  const [saving, setSaving] = useState(false);
+  const byValue = useMemo(() => new Map(options.map((o) => [o.value, o])), [options]);
   const needle = q.trim().toLowerCase();
-  const hits = needle ? options.filter((o) => `${o.erp} ${o.title} ${o.sub}`.toLowerCase().includes(needle)) : [];
-  const shown = hits.slice(0, limit);
-  const pick = (o) => { onChange(o.value); setQ(""); setOpen(false); };
-  if (selected) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${COLORS.wood}`, background: "#EEF3FE", borderRadius: 10, padding: "8px 10px" }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selected.erp || "(chưa có mã ERP)"}</div>
-          <div style={{ fontSize: 12, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.title} · {selected.sub}</div>
-        </div>
-        {selected.group !== "Master" && selected.group !== "Product" && <Badge tone="amber">Cần ngoại lệ</Badge>}
-        <button type="button" title="Chọn lại" onClick={() => onChange("")} style={{ border: "none", background: "transparent", cursor: "pointer", color: COLORS.inkSoft }}><X size={15} /></button>
-      </div>
-    );
-  }
+  const hits = options.filter((o) => !needle || `${o.erp} ${o.title} ${o.sub}`.toLowerCase().includes(needle));
+  const shown = hits.slice(0, 150);
+  const isOn = (v) => rows.some((r) => r.value === v);
+  const toggle = (v) => setRows((l) => (l.some((r) => r.value === v) ? l.filter((r) => r.value !== v) : [...l, { value: v, qty: bulkQty }]));
+  const setQty = (v, qty) => setRows((l) => l.map((r) => (r.value === v ? { ...r, qty } : r)));
+  const tickAllShown = () => setRows((l) => [...l, ...shown.filter((o) => !l.some((r) => r.value === o.value) && !inLine(o.value)).map((o) => ({ value: o.value, qty: bulkQty }))]);
+  const needExc = rows.filter((r) => byValue.get(r.value)?.needsException);
+  const totalQty = rows.reduce((a, r) => a + (Number(r.qty) || 0), 0);
+  const submit = async () => {
+    if (!rows.length) { alert("Tích chọn ít nhất 1 sản phẩm."); return; }
+    const noQty = rows.filter((r) => !(Number(r.qty) > 0));
+    if (noQty.length && !confirm(`${noQty.length} mã chưa nhập số lượng. Vẫn thêm?`)) return;
+    if (needExc.length && (!exc.reason.trim() || !exc.by.trim())) { alert("Có mã chưa được khách duyệt: nhập Lý do ngoại lệ và Người phê duyệt."); return; }
+    const dups = rows.filter((r) => inLine(r.value));
+    if (dups.length && !confirm(`${dups.length} mã đã có trong LSX này. Vẫn thêm thêm 1 dòng nữa?`)) return;
+    setSaving(true);
+    try { await onSubmit(rows, exc); } finally { setSaving(false); }
+  };
+  const th = { textAlign: "left", padding: "6px 8px", fontSize: 11.5, color: COLORS.inkSoft, fontWeight: 700, borderBottom: `1px solid ${COLORS.line}` };
+  const td = { padding: "5px 8px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 12.5, verticalAlign: "middle" };
   return (
-    <div style={{ position: "relative" }}>
-      <Input autoFocus value={q} placeholder="Gõ mã ERP (VD: 10DGCH0030) hoặc mô tả…" onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (shown.length) pick(shown[0]); } if (e.key === "Escape") setOpen(false); }} />
-      {open && needle && (
-        <div style={{ position: "absolute", zIndex: 50, top: "calc(100% + 4px)", left: 0, right: 0, background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(15,23,42,.12)", maxHeight: 320, overflowY: "auto" }}>
-          {!shown.length && <div style={{ padding: "10px 12px", fontSize: 13, color: COLORS.inkSoft }}>Không tìm thấy mã nào khớp “{q}”.</div>}
-          {shown.map((o, i) => {
-            const dup = inLine(o.value);
-            return (
-              <button key={o.value} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
-                style={{ display: "flex", width: "100%", textAlign: "left", gap: 10, alignItems: "center", padding: "8px 12px", border: "none", borderTop: i ? `1px solid ${COLORS.line}` : "none", background: i === 0 ? "#F6F8FB" : "#FFFFFF", cursor: "pointer" }}>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.erp || "(chưa có mã ERP)"}</div>
-                  <div style={{ fontSize: 12, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.title} · {o.sub}</div>
-                </div>
-                {dup && <Badge tone="teal">Đã có trong LSX</Badge>}
-                {o.group !== "Master" && o.group !== "Product" && <Badge tone="amber">Ngoại lệ</Badge>}
-              </button>
-            );
-          })}
-          {hits.length > limit && <div style={{ padding: "7px 12px", fontSize: 12, color: COLORS.inkSoft, borderTop: `1px solid ${COLORS.line}` }}>+{hits.length - limit} mã khác — gõ thêm để thu hẹp</div>}
+    <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: "1 1 320px" }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: COLORS.inkSoft }} />
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Gõ mã ERP (VD: 10DGCH0030) hoặc mô tả để lọc…" style={{ paddingLeft: 30 }} />
+        </div>
+        <Button small variant="subtle" onClick={tickAllShown} disabled={!needle || !shown.length}>Chọn tất cả {needle ? `(${shown.length})` : ""}</Button>
+        {rows.length > 0 && <Button small variant="ghost" onClick={() => setRows([])}>Bỏ chọn hết</Button>}
+        <span style={{ fontSize: 12.5, color: COLORS.inkSoft }}>Đã chọn <b>{rows.length}</b> mã · tổng SL <b>{totalQty.toLocaleString()}</b></span>
+      </div>
+      <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 10, maxHeight: 240, overflowY: "auto" }}>
+        {!shown.length && <div style={{ padding: 12, fontSize: 13, color: COLORS.inkSoft }}>Không có mã nào khớp “{q}”.</div>}
+        {shown.map((o, i) => {
+          const on = isOn(o.value), dup = inLine(o.value);
+          return (
+            <label key={o.value} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", borderTop: i ? `1px solid ${COLORS.line}` : "none", background: on ? "#EEF3FE" : "#FFFFFF", cursor: "pointer", fontSize: 13 }}>
+              <input type="checkbox" checked={on} onChange={() => toggle(o.value)} />
+              <span style={{ fontWeight: 700, minWidth: 190 }}>{o.erp || "(chưa có mã ERP)"}</span>
+              <span style={{ flex: 1, minWidth: 0, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.title} · {o.sub}</span>
+              {dup && <Badge tone="teal">Đã có trong LSX</Badge>}
+              {o.needsException && <Badge tone="amber">Cần ngoại lệ</Badge>}
+            </label>
+          );
+        })}
+        {hits.length > shown.length && <div style={{ padding: "6px 10px", fontSize: 12, color: COLORS.inkSoft }}>+{hits.length - shown.length} mã khác — gõ thêm để lọc</div>}
+      </div>
+
+      {rows.length > 0 && (
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 12.5, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 600 }}>Điền cùng số lượng:</span>
+            <Input type="number" value={bulkQty} onChange={(e) => setBulkQty(e.target.value)} style={{ width: 110, padding: "5px 8px" }} placeholder="SL" />
+            <Button small variant="subtle" onClick={() => setRows((l) => l.map((r) => ({ ...r, qty: bulkQty })))} disabled={bulkQty === ""}>Áp dụng cho {rows.length} mã</Button>
+            <span style={{ color: COLORS.inkSoft }}>(hoặc nhập riêng từng dòng; Tab để xuống dòng)</span>
+          </div>
+          <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr><th style={th}>#</th><th style={th}>Mã ERP</th><th style={th}>Mô tả</th><th style={{ ...th, width: 130 }}>Số lượng</th><th style={th}></th></tr></thead>
+            <tbody>{rows.map((r, i) => {
+              const o = byValue.get(r.value) || {};
+              return (
+                <tr key={r.value}>
+                  <td style={td}>{i + 1}</td>
+                  <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>{o.erp || "—"} {o.needsException && <Badge tone="amber">Ngoại lệ</Badge>} {inLine(r.value) && <Badge tone="teal">Đã có</Badge>}</td>
+                  <td style={{ ...td, color: COLORS.inkSoft }}>{o.title}</td>
+                  <td style={td}><Input type="number" min="0" value={r.qty} onChange={(e) => setQty(r.value, e.target.value)} style={{ padding: "5px 8px", ...(Number(r.qty) > 0 ? {} : { borderColor: COLORS.amber }) }} /></td>
+                  <td style={td}><button type="button" title="Bỏ" onClick={() => toggle(r.value)} style={{ border: "none", background: "none", color: COLORS.red, cursor: "pointer" }}><X size={14} /></button></td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>
         </div>
       )}
+
+      {needExc.length > 0 && (
+        <div style={{ border: `1px solid ${COLORS.red}55`, background: COLORS.redSoft, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, color: COLORS.red, fontSize: 13 }}><ShieldAlert size={15} /> {needExc.length} mã chưa được khách duyệt — bắt buộc phê duyệt ngoại lệ (áp dụng chung cho các mã này)</div>
+          <Field label="Lý do ngoại lệ (bắt buộc)"><TextArea rows={2} value={exc.reason} onChange={(e) => setExc({ ...exc, reason: e.target.value })} placeholder="Vì sao sản xuất trước khi khách duyệt chính thức?" /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Người phê duyệt (bắt buộc)"><Input value={exc.by} onChange={(e) => setExc({ ...exc, by: e.target.value })} /></Field>
+            <Field label="Tham chiếu xác nhận của khách (nếu có)"><Input value={exc.ref} onChange={(e) => setExc({ ...exc, ref: e.target.value })} /></Field>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button small onClick={submit} disabled={saving || !rows.length}><Plus size={13} /> {saving ? "Đang thêm…" : `Thêm ${rows.length || ""} sản phẩm vào LSX`}</Button>
+        <Button small variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
     </div>
   );
 }
@@ -6263,7 +6315,7 @@ function ManufacturingOrdersView({
     const masters = masterList.filter((m) => m.status === "Active").map((m) => ({ value: "mp:" + m.id, erp: m.erpNo || "", title: m.description || first(m.name), sub: customerName(m.customerId), group: "Master" }));
     const pending = samples
       .filter((x) => !useMaster || !masterList.some((m) => m.sourceSampleId === x.id || (m.erpNo && m.erpNo === String(x.erpNo || "").trim())))
-      .map((x) => ({ value: "s:" + x.id, erp: x.erpNo || "", title: first(x.name), sub: `${x.id} · ${x.customerApprovalStatus || "Pending"}`, group: useMaster ? "Sample chưa accept — cần phê duyệt ngoại lệ" : "Product" }));
+      .map((x) => ({ value: "s:" + x.id, erp: x.erpNo || "", title: first(x.name), sub: `${x.id} · ${x.customerApprovalStatus || "Pending"}`, group: useMaster ? "Sample chưa accept — cần phê duyệt ngoại lệ" : "Product", needsException: x.customerApprovalStatus !== "Approved" }));
     return [...masters, ...pending].sort((a, b) => (a.group === b.group ? String(a.erp).localeCompare(String(b.erp)) : a.group === "Master" ? -1 : 1));
   }, [masterList, samples, useMaster, customerName]);
   const lotsForLine = (lineId) => productionLots.filter((l) => l.moProductLineId === lineId);
@@ -6321,6 +6373,36 @@ function ManufacturingOrdersView({
     }
     await saveProductionApprovals([...productionApprovals, ...newApprovals]);
     return true;
+  };
+
+  // v58.3: add many lines at once. Master / approved Sample → Standard approval; not-approved Sample → Exception.
+  const addLinesBatch = async (mo, rows, exc) => {
+    const approvals = [], lines = [], skipped = [];
+    const by = currentUser?.id || "";
+    for (const r of rows) {
+      let product = null, masterProductId = "", exception = false;
+      if (r.value.startsWith("mp:")) {
+        const m = masterById.get(r.value.slice(3));
+        product = m && samples.find((x) => x.id === m.sourceSampleId);
+        masterProductId = m?.id || "";
+        if (!product) { skipped.push(m?.erpNo || r.value); continue; }
+      } else {
+        product = samples.find((x) => x.id === r.value.slice(2));
+        if (!product) { skipped.push(r.value); continue; }
+        exception = product.customerApprovalStatus !== "Approved";
+      }
+      const approvalId = newUuid(), lineId = newUuid();
+      approvals.push({ id: approvalId, productId: product.id, moProductLineId: lineId, approvalType: exception ? "Exception" : "Standard",
+        customerConfirmationReference: exception ? exc.ref : "", reason: exception ? `[Người duyệt: ${exc.by.trim()}] ${exc.reason.trim()}` : "",
+        approvedBy: by, approvedAt: new Date().toISOString(), status: "Approved" });
+      lines.push({ id: lineId, moId: mo.id, productId: product.id, qtyOrdered: r.qty === "" ? "" : Number(r.qty), unitPrice: "",
+        productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "",
+        massProductionApprovalId: approvalId, isException: exception, masterProductId });
+    }
+    if (skipped.length) alert(`Bỏ qua ${skipped.length} mã không tìm thấy Sample gốc: ${skipped.join(", ")}`);
+    if (!lines.length) return;
+    const ok = await commitApprovalsAndLines(approvals, lines);
+    if (ok) setShowAddLine(false);
   };
 
   const addLineStandard = async (mo, product, qty, masterProductId = "") => {
@@ -6547,28 +6629,12 @@ function ManufacturingOrdersView({
             </div>
 
             {showAddLine && (
-              <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
-                  <Field label={useMaster ? "Sản phẩm — gõ mã ERP để tìm (Master Products)" : "Sản phẩm — gõ mã ERP để tìm"}>
-                    <ErpSearchPicker
-                      options={lineOptions}
-                      value={newLineProductId}
-                      onChange={setNewLineProductId}
-                      inLine={(v) => linesForMo(openMo.id).some((l) => (v.startsWith("mp:") ? l.masterProductId === v.slice(3) : l.productId === v.slice(2)))}
-                    />
-                  </Field>
-                  <Field label="Qty"><Input type="number" value={newLineQty} onChange={(e) => setNewLineQty(e.target.value)} /></Field>
-                </div>
-                {newLineProductId.startsWith("s:") && samples.find((s) => s.id === newLineProductId.slice(2))?.customerApprovalStatus !== "Approved" && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", color: COLORS.amber, fontSize: 12.5, background: COLORS.amberSoft, padding: "8px 10px", borderRadius: 8 }}>
-                    <ShieldAlert size={15} /> Product này chưa được khách duyệt — thêm vào MO sẽ yêu cầu tạo phê duyệt ngoại lệ.
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Button small onClick={confirmAddLine}>Add</Button>
-                  <Button small variant="ghost" onClick={() => { setShowAddLine(false); setNewLineProductId(""); setNewLineQty(""); }}>Cancel</Button>
-                </div>
-              </div>
+              <MultiAddLinesPanel
+                options={lineOptions}
+                inLine={(v) => linesForMo(openMo.id).some((l) => (v.startsWith("mp:") ? l.masterProductId === v.slice(3) : l.productId === v.slice(2)))}
+                onSubmit={(rows, exc) => addLinesBatch(openMo, rows, exc)}
+                onCancel={() => setShowAddLine(false)}
+              />
             )}
 
             {exceptionFor && (
