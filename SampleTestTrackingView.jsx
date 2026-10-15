@@ -123,8 +123,16 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
     setInitialMasterId(presetMasterId); setCreating(true); setOpenId(""); setTab("list");
     onPresetUsed?.();
   }, [presetMasterId]);
-  const masterCtx = { samples, mos: manufacturingOrders, moLines: moProductLines };
-  const lsxOptionsFor = (m) => (m ? lsxForMaster(m, masterCtx).filter((x) => x.kind === "mo") : []);
+  // memoised so the batch form's LSX index is not rebuilt on every keystroke
+  const lsxOptionsFor = useMemo(() => {
+    const ctx = { samples, mos: manufacturingOrders, moLines: moProductLines };
+    const cache = new Map();
+    return (m) => {
+      if (!m) return [];
+      if (!cache.has(m.id)) cache.set(m.id, lsxForMaster(m, ctx).filter((x) => x.kind === "mo"));
+      return cache.get(m.id);
+    };
+  }, [samples, manufacturingOrders, moProductLines, masterProducts]);
 
   const run = (promise, what) => promise.catch((e) => { alert(`${what} thất bại: ${e?.message || e}${saveErrorHint(e)}\nDữ liệu sẽ được tải lại.`); reload(); });
 
@@ -647,23 +655,45 @@ function NewBatchFromMasterForm({ ui, samples, customerName, materialLists, sett
   const chipSteps = settings.steps.filter((x) => x.source === "input" && !STEP_CHIP_EXCLUDE.includes(x.code));
   const fixedSteps = settings.steps.filter((x) => x.planType === "fixed");
 
-  const rowFor = (m) => {
+  const q = search.trim().toLowerCase();
+  // v58.5: LSX index — which Master Products are in which LSX (from Manufacturing Orders)
+  const [lsxFilter, setLsxFilter] = useState("");
+  const { lsxIndex, lsxOfMaster } = useMemo(() => {
+    const idx = new Map(), of = new Map();
+    for (const m of masterProducts) {
+      const opts = lsxOptionsFor(m);
+      of.set(m.id, opts);
+      for (const x of opts) {
+        const cur = idx.get(x.key) || { key: x.key, moNo: x.moNo, type: x.type, date: x.date, ids: new Set() };
+        cur.ids.add(m.id); idx.set(x.key, cur);
+      }
+    }
+    return { lsxIndex: idx, lsxOfMaster: of };
+  }, [masterProducts, lsxOptionsFor]);
+  const lsxList = [...lsxIndex.values()].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.moNo).localeCompare(String(b.moNo)));
+
+  const rowFor = (m, preferKey = "") => {
     const src = samples.find((x) => x.id === m.sourceSampleId);
     const sug = src ? suggestFromProduct(src, materialLists) : { weaveOn: "", na: [] };
-    const opts = lsxOptionsFor(m);
-    const firstMass = opts.find((x) => x.type === "Đại trà") || opts[0];
-    return { masterId: m.id, moKey: firstMass?.key || "", productDescription: m.description || firstLine(m.name), weaveOn: sug.weaveOn || "", na: sug.na || [] };
+    const opts = lsxOfMaster.get(m.id) || lsxOptionsFor(m);
+    const chosen = (preferKey && opts.find((x) => x.key === preferKey)) || opts.find((x) => x.type === "Đại trà") || opts[0];
+    return { masterId: m.id, moKey: chosen?.key || "", productDescription: m.description || firstLine(m.name), weaveOn: sug.weaveOn || "", na: sug.na || [] };
   };
   const isPicked = (id) => picked.some((p) => p.masterId === id);
-  const toggle = (m) => setPicked((list) => (list.some((p) => p.masterId === m.id) ? list.filter((p) => p.masterId !== m.id) : [...list, rowFor(m)]));
+  // LSX to pre-select when ticking: the LSX filter, else an LSX whose number matches the search text
+  const preferLsx = () => lsxFilter || (q ? (lsxList.find((x) => String(x.moNo).toLowerCase() === q) || lsxList.find((x) => String(x.moNo).toLowerCase().includes(q)))?.key || "" : "");
+  const toggle = (m) => setPicked((list) => (list.some((p) => p.masterId === m.id) ? list.filter((p) => p.masterId !== m.id) : [...list, rowFor(m, preferLsx())]));
   const patch = (id, ch) => setPicked((list) => list.map((p) => (p.masterId === id ? { ...p, ...ch } : p)));
   useEffect(() => { const m = initialMasterId && byId.get(initialMasterId); if (m && !isPicked(m.id)) setPicked((l) => [...l, rowFor(m)]); }, [initialMasterId]);
 
-  const q = search.trim().toLowerCase();
-  const options = masterProducts.filter((m) => m.status === "Active" && (!q || `${m.erpNo} ${m.description} ${m.name} ${customerName(m.customerId)}`.toLowerCase().includes(q)))
+  const lsxSel = lsxFilter ? lsxIndex.get(lsxFilter) : null;
+  const lsxText = (m) => (lsxOfMaster.get(m.id) || []).map((x) => x.moNo).join(" ");
+  const options = masterProducts.filter((m) => m.status === "Active"
+      && (!lsxSel || lsxSel.ids.has(m.id))
+      && (!q || `${m.erpNo} ${m.description} ${m.name} ${customerName(m.customerId)} ${lsxText(m)}`.toLowerCase().includes(q)))
     .sort((a, b) => String(a.erpNo).localeCompare(String(b.erpNo)));
-  const shown = options.slice(0, 200);
-  const pickAllShown = () => setPicked((list) => [...list, ...shown.filter((m) => !list.some((p) => p.masterId === m.id)).map(rowFor)]);
+  const shown = options.slice(0, 300);
+  const pickAllShown = () => { const k = preferLsx(); setPicked((list) => [...list, ...shown.filter((m) => !list.some((p) => p.masterId === m.id)).map((m) => rowFor(m, k))]); };
 
   const submit = async () => {
     if (!picked.length) { alert("Tích chọn ít nhất 1 sản phẩm."); return; }
@@ -694,9 +724,13 @@ function NewBatchFromMasterForm({ ui, samples, customerName, materialLists, sett
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ position: "relative", flex: "1 1 320px" }}>
               <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: COLORS.inkSoft }} />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Gõ mã ERP / mô tả / khách để lọc…" style={{ paddingLeft: 30 }} />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Gõ mã ERP / mô tả / khách / số LSX để lọc…" style={{ paddingLeft: 30 }} />
             </div>
-            <Button small variant="subtle" onClick={pickAllShown} disabled={!q || !shown.length}>Chọn tất cả {q ? `(${shown.length})` : ""}</Button>
+            <Select value={lsxFilter} onChange={(e) => setLsxFilter(e.target.value)} style={{ maxWidth: 300, ...(lsxFilter ? { borderColor: COLORS.wood } : {}) }}>
+              <option value="">Lọc theo LSX: tất cả</option>
+              {lsxList.map((x) => <option key={x.key} value={x.key}>{x.type} · {x.moNo} ({x.ids.size} mã)</option>)}
+            </Select>
+            <Button small variant="subtle" onClick={pickAllShown} disabled={(!q && !lsxFilter) || !shown.length}>Chọn tất cả {q || lsxFilter ? `(${shown.length})` : ""}</Button>
             {picked.length > 0 && <Button small variant="ghost" onClick={() => setPicked([])}>Bỏ chọn hết</Button>}
             <span style={{ fontSize: 12.5, color: COLORS.inkSoft }}>Đã chọn <b>{picked.length}</b> / {options.length} mã</span>
           </div>
@@ -704,13 +738,14 @@ function NewBatchFromMasterForm({ ui, samples, customerName, materialLists, sett
             {!masterProducts.length && <div style={{ padding: 12, fontSize: 12.5, color: COLORS.amber }}>Chưa có Master Product nào. Chuyển mẫu đã accept từ Sample sang Master trước.</div>}
             {shown.map((m, i) => {
               const on = isPicked(m.id);
-              const nLsx = lsxOptionsFor(m).length;
+              const nLsx = (lsxOfMaster.get(m.id) || []).length;
               return (
                 <label key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 10px", borderTop: i ? `1px solid ${COLORS.line}` : "none", background: on ? "#EEF3FE" : "#FFFFFF", cursor: "pointer", fontSize: 13 }}>
                   <input type="checkbox" checked={on} onChange={() => toggle(m)} />
                   <ProductThumb image={m.imageUrl} ui={ui} size={30} />
                   <span style={{ fontWeight: 700, minWidth: 190 }}>{m.erpNo || "(no ERP)"}</span>
                   <span style={{ flex: 1, minWidth: 0, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.description || firstLine(m.name)} · {customerName(m.customerId)}</span>
+                  {nLsx > 0 && <span style={{ fontSize: 11.5, color: COLORS.inkSoft, whiteSpace: "nowrap" }}>{lsxText(m)}</span>}
                   {tracked.has(m.id) && <Badge tone="teal">Đang test</Badge>}
                   {!nLsx && <Badge tone="amber">Chưa có LSX</Badge>}
                 </label>
