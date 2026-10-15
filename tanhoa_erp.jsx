@@ -1645,6 +1645,7 @@ function levelCan(level, module, action = "view") {
             presetMasterId={testPreset}
             onPresetUsed={() => setTestPreset("")}
             onOpenMaster={(id) => { setMasterFocus(id); setView("masterProducts"); }}
+            excel={{ download: downloadExcelWithEmbeddedImages, parse: parseXlsxWorkbook }}
             onCreateMasterProduct={(d) => {
               // v57: "Chuyển sang Products" — test tracking → master product
               const id = nextId(samples, "SA", 5);

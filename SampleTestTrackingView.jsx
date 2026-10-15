@@ -6,7 +6,7 @@
    file does not import from tanhoa_erp.jsx (no circular import).
 ------------------------------------------------------------------- */
 import React, { useEffect, useMemo, useState } from "react";
-import { FlaskConical, Plus, X, Search, ArrowLeft, Lock, Trash2, CalendarClock, Settings, ListChecks, Image as ImageIcon, RefreshCw } from "lucide-react";
+import { FlaskConical, Plus, X, Search, ArrowLeft, Lock, Trash2, CalendarClock, Settings, ListChecks, Image as ImageIcon, RefreshCw, Download, Upload } from "lucide-react";
 import {
   computeTracking, FILTERS, todayItems, suggestFromProduct, WEAVE_OPTIONS, IQC_RESULTS, TEST_TYPES, TEST_RESULTS,
   PLACES, todayIso, mergeSettings,
@@ -19,6 +19,7 @@ import { QcForm } from "./QcView.jsx";
 import { loadQc, saveQc, deleteQc } from "./qcApi";
 import { qcFieldsFromTest, qcIdForTest, mergeQcSettings } from "./qcLogic";
 import { lsxForMaster } from "./masterApi";
+import { buildExportTable, diffImport } from "./sampleTestExcel.js";
 
 const PART_STEPS = ["KHUNG_SAT", "HW", "NEM"];
 const PART_SUGGESTIONS = {
@@ -84,7 +85,7 @@ function saveErrorHint(e) {
 }
 
 export default function SampleTestTrackingView({ samples = [], customers = [], customerName, materialLists = {}, currentUser, canEdit = true, canDelete = true, canSettings = true, ui, onCreateMasterProduct,
-  masterAvailable = false, masterProducts = [], manufacturingOrders = [], moProductLines = [], presetMasterId = "", onPresetUsed, onOpenMaster }) {
+  masterAvailable = false, masterProducts = [], manufacturingOrders = [], moProductLines = [], presetMasterId = "", onPresetUsed, onOpenMaster, excel = null }) {
   const { Button, Panel, Badge, Field, Input, Select, TextArea, COLORS, FONT_HEAD } = ui;
   const [state, setState] = useState({ loading: true, available: true, error: "" });
   const [trackings, setTrackings] = useState([]);
@@ -270,6 +271,38 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
     const newId = onCreateMasterProduct({ erpNo: info.erpNo, name: t.productDescription || info.description, customerId: info.customerId, image: info.image, manufacturingOrderNo: t.lsxNo });
     if (newId) patchTracking(t.id, { sampleId: newId });
   };
+  /* ---------- v58.4: Excel round-trip ---------- */
+  const [importing, setImporting] = useState(false);
+  const exportExcel = async () => {
+    const list = entries.filter((e) => e.tracking.status !== "Closed")
+      .sort((a, b) => String(a.tracking.lsxNo || "").localeCompare(String(b.tracking.lsxNo || "")) || String(a.info.erpNo).localeCompare(String(b.info.erpNo)));
+    if (!list.length) { alert("Chưa có mẫu nào đang theo dõi để xuất."); return; }
+    const { headers, rows } = buildExportTable(list, settings, customerName);
+    try { await excel.download(`TheoDoiMauTest_${todayIso().replace(/-/g, "")}.xlsx`, headers, rows); }
+    catch (e) { alert("Xuất Excel thất bại: " + (e?.message || e)); }
+  };
+  const applyImport = async (diff) => {
+    const stepNext = [];
+    for (const [tid, steps] of Object.entries(diff.stepPatches)) {
+      for (const [code, patch] of Object.entries(steps)) {
+        const id = `${tid}:${code}`;
+        const base = stepRows.find((r) => r.id === id) || { id, trackingId: tid, stepCode: code, planDate: "", actualDate: "", notApplicable: false, rescheduleDate: "", note: "", proofImages: [] };
+        stepNext.push({ ...base, ...patch });
+      }
+    }
+    const trNext = Object.entries(diff.trackingPatches).map(([tid, p]) => ({ ...trackings.find((t) => t.id === tid), ...p })).filter((t) => t.id);
+    try {
+      for (let i = 0; i < stepNext.length; i += 200) await saveStepRows(stepNext.slice(i, i + 200));
+      for (const t of trNext) await saveTracking(t);
+    } catch (e) {
+      alert("Ghi dữ liệu từ Excel bị lỗi giữa chừng: " + (e?.message || e) + saveErrorHint(e) + "\nDữ liệu sẽ được tải lại — nhập lại file để ghi nốt (các ô đã ghi sẽ không bị tính là thay đổi).");
+      reload(); return false;
+    }
+    setStepRows((all) => { const m = new Map(all.map((r) => [r.id, r])); stepNext.forEach((r) => m.set(r.id, r)); return [...m.values()]; });
+    setTrackings((all) => all.map((t) => trNext.find((x) => x.id === t.id) || t));
+    return true;
+  };
+
   const persistSettings = (next) => {
     setSettings(next);
     run(saveTestSettings(next), "Lưu thiết lập");
@@ -287,6 +320,8 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Button variant="ghost" small onClick={reload}><RefreshCw size={14} /> Tải lại</Button>
+        {excel && state.available && <Button variant="subtle" small onClick={exportExcel}><Download size={14} /> Xuất Excel</Button>}
+        {excel && state.available && canEdit && <Button variant="subtle" small onClick={() => setImporting(true)}><Upload size={14} /> Nhập Excel</Button>}
         {canEdit && state.available && <Button onClick={() => { setCreating(true); setOpenId(""); setTab("list"); }}><Plus size={15} /> Theo dõi mẫu mới</Button>}
       </div>
     </div>
@@ -347,6 +382,7 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
           masterAvailable={masterAvailable} masterProducts={masterProducts} lsxOptionsFor={lsxOptionsFor} onOpenMaster={onOpenMaster}
           qcRecords={qc.records.filter((r) => r.trackingId === open.id)} openQcForStep={openQcForStep} onOpenQc={setQcDraft} />
       )}
+      {importing && <ExcelImportModal ui={ui} excel={excel} entries={entries} settings={settings} onApply={applyImport} onClose={() => setImporting(false)} />}
       {qcDraft && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }} onClick={() => setQcDraft(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "min(980px, 100%)" }}>
@@ -511,6 +547,93 @@ function TodayList({ ui, entries, customerName, onOpen }) {
 }
 
 /* ================= Create ================= */
+/* ================= v58.4: Excel import with preview ================= */
+function ExcelImportModal({ ui, excel, entries, settings, onApply, onClose }) {
+  const { Button, Badge, COLORS } = ui;
+  const [stage, setStage] = useState("pick"); // pick | parsing | preview | saving | done
+  const [diff, setDiff] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [err, setErr] = useState("");
+  const choose = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    setFileName(f.name); setErr(""); setStage("parsing");
+    try {
+      const parsed = await excel.parse(f);
+      setDiff(diffImport(parsed.rows || [], entries, settings)); setStage("preview");
+    } catch (x) { setErr(x?.message || String(x)); setStage("pick"); }
+  };
+  const apply = async () => { setStage("saving"); const ok = await onApply(diff); setStage(ok ? "done" : "preview"); };
+  const nTracking = diff ? new Set(diff.changes.map((c) => c.trackingId)).size : 0;
+  const th = { textAlign: "left", padding: "6px 8px", fontSize: 11.5, color: COLORS.inkSoft, fontWeight: 700, borderBottom: `1px solid ${COLORS.line}`, position: "sticky", top: 0, background: "#FFFFFF" };
+  const td = { padding: "5px 8px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 12.5 };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }} onClick={stage === "saving" ? undefined : onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1000px, 100%)", background: "#FFFFFF", borderRadius: 14, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>Nhập tiến độ từ Excel</div>
+          {stage !== "saving" && <Button small variant="ghost" onClick={onClose}><X size={14} /> Đóng</Button>}
+        </div>
+        {(stage === "pick" || stage === "parsing") && (
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            <ol style={{ margin: "0 0 10px", paddingLeft: 18 }}>
+              <li>Bấm <b>Xuất Excel</b> để lấy file mới nhất (mỗi dòng 1 mẫu, cột "ID" để nhận diện — <b>không sửa cột ID</b>).</li>
+              <li>Điền ngày vào các cột <b>Thực tế / Ấn định / Hẹn lại</b> (dd/mm/yyyy), gõ <b>N/A</b> nếu mẫu không có bước đó. Cột "(chỉ xem)" sẽ bị bỏ qua. Có thể copy-paste, kéo thả, xoá dòng không cần.</li>
+              <li>Chọn file ở đây → xem trước các ô thay đổi → bấm <b>Áp dụng</b>.</li>
+            </ol>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px dashed ${COLORS.wood}`, color: COLORS.wood, borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontWeight: 600 }}>
+              <Upload size={15} /> {stage === "parsing" ? `Đang đọc ${fileName}…` : "Chọn file .xlsx"}
+              <input type="file" accept=".xlsx" onChange={choose} style={{ display: "none" }} disabled={stage === "parsing"} />
+            </label>
+            {err && <div style={{ color: COLORS.red, marginTop: 8 }}>{err}</div>}
+          </div>
+        )}
+        {diff && (stage === "preview" || stage === "saving" || stage === "done") && (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
+              <Badge>{fileName}</Badge>
+              <Badge>{diff.rowsRead} dòng đọc</Badge>
+              <Badge tone={diff.changes.length ? "wood" : "neutral"}>{diff.changes.length} ô thay đổi · {nTracking} mẫu</Badge>
+              {diff.skipped.length > 0 && <Badge tone="amber">{diff.skipped.length} ô bỏ qua</Badge>}
+              {diff.errors.length > 0 && <Badge tone="red">{diff.errors.length} lỗi</Badge>}
+              {diff.unknownHeaders.length > 0 && <Badge tone="amber">{diff.unknownHeaders.length} cột lạ bị bỏ qua</Badge>}
+            </div>
+            {(diff.errors.length > 0 || diff.skipped.length > 0) && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, maxHeight: 160, overflowY: "auto" }}>
+                {diff.errors.map((x, i) => <div key={"e" + i} style={{ color: COLORS.red }}>Dòng {x.row}{x.erp ? ` · ${x.erp}` : ""}: {x.message}</div>)}
+                {diff.skipped.map((x, i) => <div key={"s" + i} style={{ color: "#92400E" }}>Dòng {x.row} · {x.erp}: {x.message}</div>)}
+              </div>
+            )}
+            {diff.changes.length ? (
+              <div style={{ maxHeight: 380, overflowY: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>Dòng</th><th style={th}>Mã ERP</th><th style={th}>Cột</th><th style={th}>Hiện tại</th><th style={th}>Mới</th></tr></thead>
+                  <tbody>{diff.changes.map((c, i) => (
+                    <tr key={i}>
+                      <td style={td}>{c.row}</td><td style={{ ...td, fontWeight: 700 }}>{c.erp}</td><td style={td}>{c.label}</td>
+                      <td style={{ ...td, color: COLORS.inkSoft }}>{c.from || "—"}</td>
+                      <td style={{ ...td, fontWeight: 600, color: c.to === "(xoá)" ? COLORS.red : COLORS.ink }}>{c.to || "—"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            ) : <div style={{ fontSize: 13, color: COLORS.inkSoft }}>Không có ô nào khác với dữ liệu hiện tại.</div>}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {stage === "done"
+                ? <><Badge tone="green">Đã ghi {diff.changes.length} ô</Badge><Button small onClick={onClose}>Xong</Button></>
+                : <>
+                    <Button onClick={apply} disabled={!diff.changes.length || stage === "saving"}>{stage === "saving" ? "Đang ghi…" : `Áp dụng ${diff.changes.length} thay đổi`}</Button>
+                    <Button variant="ghost" onClick={() => { setDiff(null); setStage("pick"); }} disabled={stage === "saving"}>Chọn file khác</Button>
+                    {diff.changes.some((c) => c.to === "(xoá)") && <span style={{ fontSize: 12.5, color: COLORS.red }}>Có ô bị xoá trắng — kiểm tra lại trước khi áp dụng.</span>}
+                  </>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ================= v58.2: tick many Master Products → many test trackings ================= */
 const STEP_CHIP_EXCLUDE = ["LAP_RAP", "NHAN_VE", "DAN_DAY"];
 function NewBatchFromMasterForm({ ui, samples, customerName, materialLists, settings, existing, currentUser, masterProducts, lsxOptionsFor, initialMasterId = "", onCancel, onCreate }) {
