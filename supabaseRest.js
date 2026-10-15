@@ -346,12 +346,15 @@ export const adapters = {
     id: x.id, mo_no: x.moNo || "", customer_id: nullify(x.customerId), po_reference: nullify(x.poReference),
     order_qty_total: x.orderQtyTotal === "" ? null : x.orderQtyTotal, planned_ship_date: nullify(x.plannedShipDate),
     status: x.status || "Draft", notes: nullify(x.notes),
+    // v58: LSX type / execution date / description / linked PI
+    mo_type: x.moType || "Đại trà", issue_date: nullify(x.issueDate), description: nullify(x.description), pi_id: nullify(x.piId),
   }),
   moProductLines: (x) => ({
     id: x.id, mo_id: x.moId, product_id: x.productId, qty_ordered: x.qtyOrdered === "" ? null : x.qtyOrdered, unit_price: x.unitPrice === "" ? null : x.unitPrice,
     production_stage: x.productionStage || "Not Started", stage_status: x.stageStatus || "On track",
     planned_complete_date: nullify(x.plannedCompleteDate), actual_complete_date: nullify(x.actualCompleteDate),
     mass_production_approval_id: nullify(x.massProductionApprovalId), is_exception: Boolean(x.isException),
+    master_product_id: nullify(x.masterProductId), // v58
   }),
   productionApprovals: (x) => ({
     id: x.id, product_id: x.productId, mo_product_line_id: nullify(x.moProductLineId), approval_type: x.approvalType || "Standard",
@@ -370,11 +373,17 @@ export const adapters = {
   }),
 };
 
+// v58 columns — dropped from the payload (with a warning) if the v58 SQL has not been run yet.
+export const V58_OPTIONAL_COLUMNS = {
+  manufacturing_orders: ["mo_type", "issue_date", "description", "pi_id"],
+  mo_product_lines: ["master_product_id"],
+};
+
 function manufacturingOrderToApp(r) {
-  return { id: r.id, moNo: r.mo_no || "", customerId: r.customer_id || "", poReference: r.po_reference || "", orderQtyTotal: r.order_qty_total ?? "", plannedShipDate: r.planned_ship_date || "", status: r.status || "Draft", notes: r.notes || "", createdAt: r.created_at || "" };
+  return { id: r.id, moNo: r.mo_no || "", customerId: r.customer_id || "", poReference: r.po_reference || "", orderQtyTotal: r.order_qty_total ?? "", plannedShipDate: r.planned_ship_date || "", status: r.status || "Draft", notes: r.notes || "", createdAt: r.created_at || "", moType: r.mo_type || "Đại trà", issueDate: r.issue_date || "", description: r.description || "", piId: r.pi_id || "" };
 }
 function moProductLineToApp(r) {
-  return { id: r.id, moId: r.mo_id, productId: r.product_id, qtyOrdered: r.qty_ordered ?? "", unitPrice: r.unit_price ?? "", productionStage: r.production_stage || "Not Started", stageStatus: r.stage_status || "On track", plannedCompleteDate: r.planned_complete_date || "", actualCompleteDate: r.actual_complete_date || "", massProductionApprovalId: r.mass_production_approval_id || "", isException: Boolean(r.is_exception), createdAt: r.created_at || "" };
+  return { id: r.id, moId: r.mo_id, productId: r.product_id, qtyOrdered: r.qty_ordered ?? "", unitPrice: r.unit_price ?? "", productionStage: r.production_stage || "Not Started", stageStatus: r.stage_status || "On track", plannedCompleteDate: r.planned_complete_date || "", actualCompleteDate: r.actual_complete_date || "", massProductionApprovalId: r.mass_production_approval_id || "", isException: Boolean(r.is_exception), createdAt: r.created_at || "", masterProductId: r.master_product_id || "" };
 }
 function productionApprovalToApp(r) {
   return { id: r.id, productId: r.product_id, moProductLineId: r.mo_product_line_id || "", approvalType: r.approval_type || "Standard", customerConfirmationReference: r.customer_confirmation_reference || "", reason: r.reason || "", approvedBy: r.approved_by || "", approvedAt: r.approved_at || "", status: r.status || "Approved" };

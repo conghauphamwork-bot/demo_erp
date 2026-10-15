@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
-import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical } from "lucide-react";
+import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical, Package, ReceiptText } from "lucide-react";
 import SampleTestTrackingView from "./SampleTestTrackingView.jsx";
 import QcView, { QcProductSection } from "./QcView.jsx";
 import ProductChangeHistory from "./ProductChangeHistory.jsx";
-import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
+import MasterProductsView from "./MasterProductsView.jsx";
+import PiView from "./PiView.jsx";
+import { loadMasterData, saveMaster, saveChange as saveMasterChange, masterFromSample, LSX_TYPES } from "./masterApi";
+import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile, V58_OPTIONAL_COLUMNS } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
 // supabaseRest.js copies that may still be deployed in Vercel.
@@ -366,6 +369,21 @@ async function saveCollection(table, previous, next, adapter) {
   const rows = (next || []).filter((x) => x?.id).map(adapter);
   await upsertRows(table, rows);
   for (const id of oldIds) if (!newIds.has(id)) await deleteRow(table, id);
+}
+
+// v58: manufacturing_orders / mo_product_lines gained new columns. If the v58 SQL
+// has not been run yet, retry once without them so existing MO data still saves.
+let v58ColumnsWarned = false;
+async function saveCollectionV58(table, previous, next, adapter) {
+  try {
+    await saveCollection(table, previous, next, adapter);
+  } catch (err) {
+    const optional = V58_OPTIONAL_COLUMNS[table] || [];
+    if (!optional.length || !/PGRST204|column/i.test(String(err?.message || err))) throw err;
+    const strip = (x) => { const row = { ...adapter(x) }; optional.forEach((k) => delete row[k]); return row; };
+    await saveCollection(table, previous, next, strip);
+    if (!v58ColumnsWarned) { v58ColumnsWarned = true; alert("Đã lưu LSX, nhưng Loại LSX / Ngày thực hiện / Mô tả / PI / Master chưa được lưu vì chưa chạy file SQL v58 trong Supabase."); }
+  }
 }
 
 async function imageFileToDataUrl(file, maxDimension = 1600, quality = 0.82) {
@@ -959,11 +977,11 @@ function levelCan(level, module, action = "view") {
   }
 
   if (l === 2) {
-    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests", "qc"].includes(module)) return false;
+    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests", "qc", "masterProducts", "pi"].includes(module)) return false;
     if (["delete", "import"].includes(action)) return false;
     return true;
   }
-  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests", "qc"].includes(module);
+  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests", "qc", "masterProducts", "pi"].includes(module);
 }
 
   const [loaded, setLoaded] = useState(false);
@@ -992,6 +1010,19 @@ function levelCan(level, module, action = "view") {
   const [massProductionTestSamples, setMassProductionTestSamples] = useState([]);
 
   const [materialLists, setMaterialLists] = useState({});
+
+  // v58: Master Products + PI (separate tolerant loader — ERP still works if the v58 SQL is not run)
+  const [master, setMaster] = useState({ loading: true, available: false, masterProducts: [], changes: [], pis: [], piLines: [], error: "" });
+  const [masterFocus, setMasterFocus] = useState("");
+  const [piFocus, setPiFocus] = useState("");
+  const [sampleFocus, setSampleFocus] = useState("");
+  const [testPreset, setTestPreset] = useState("");
+  const reloadMaster = useCallback(async () => {
+    setMaster((m) => ({ ...m, loading: true }));
+    try { const d = await loadMasterData(); setMaster({ loading: false, error: "", ...d }); }
+    catch (e) { setMaster((m) => ({ ...m, loading: false, available: false, error: e?.message || String(e) })); }
+  }, []);
+  useEffect(() => { if (supabaseConfigured && !qrSampleId) reloadMaster(); }, [reloadMaster, qrSampleId]);
 
   useEffect(() => {
     (async () => {
@@ -1129,8 +1160,8 @@ function levelCan(level, module, action = "view") {
         : adapters.masters;
       saveCollection(table, materialLists[key] || [], next, adapter).catch((e) => alert("Material master save failed: " + e.message));
     },
-    manufacturingOrders: (next) => { setManufacturingOrders(next); saveCollection("manufacturing_orders", manufacturingOrders, next, adapters.manufacturingOrders).catch((e) => alert("MO save failed: " + e.message)); },
-    moProductLines: (next) => { setMoProductLines(next); saveCollection("mo_product_lines", moProductLines, next, adapters.moProductLines).catch((e) => alert("MO product line save failed: " + e.message)); },
+    manufacturingOrders: (next) => { setManufacturingOrders(next); saveCollectionV58("manufacturing_orders", manufacturingOrders, next, adapters.manufacturingOrders).catch((e) => alert("MO save failed: " + e.message)); },
+    moProductLines: (next) => { setMoProductLines(next); saveCollectionV58("mo_product_lines", moProductLines, next, adapters.moProductLines).catch((e) => alert("MO product line save failed: " + e.message)); },
     productionApprovals: (next) => { setProductionApprovals(next); saveCollection("production_approvals", productionApprovals, next, adapters.productionApprovals).catch((e) => alert("Approval save failed: " + e.message)); },
     productionLots: (next) => { setProductionLots(next); saveCollection("production_lots", productionLots, next, adapters.productionLots).catch((e) => alert("Lot save failed: " + e.message)); },
     massProductionTestSamples: (next) => { setMassProductionTestSamples(next); saveCollection("mass_production_test_samples", massProductionTestSamples, next, adapters.massProductionTestSamples).catch((e) => alert("Test sample save failed: " + e.message)); },
@@ -1162,7 +1193,7 @@ function levelCan(level, module, action = "view") {
   useEffect(() => {
     const allowedForLevel = Number(currentUser?.level ?? 3) === 1
       ? ["samples", "tasks", "calendar"]
-      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders", "sampleTests", "qc"];
+      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders", "sampleTests", "qc", "masterProducts", "pi"];
     if (!allowedForLevel.includes(view)) {
       setView(allowedForLevel[0] || "samples");
     }
@@ -1195,12 +1226,45 @@ function levelCan(level, module, action = "view") {
     return <SampleQuickViewPublic data={publicSample} />;
   }
 
+  // v58: Sample --(khách accept)--> Master Products
+  const transferSampleToMaster = async (sample) => {
+    if (!master.available) { alert("Chưa bật Master Products: cần chạy file SQL v58 trong Supabase (sau v56, v57)."); return null; }
+    const erp = String(sample.erpNo || "").trim();
+    const existing = master.masterProducts.find((m) => m.sourceSampleId === sample.id || (erp && m.erpNo === erp));
+    if (existing) {
+      if (confirm(`Mã ${erp || sample.id} đã có trong Master Products (${existing.id}). Mở Master Product đó?`)) { setMasterFocus(existing.id); setView("masterProducts"); }
+      return null;
+    }
+    if (!erp && !confirm("Sample này chưa có Mã ERP. Vẫn chuyển sang Master Products?")) return null;
+    const msg = `Chuyển ${erp || sample.id} sang Master Products?\n\n• Chỉ làm khi KHÁCH ĐÃ ACCEPT mẫu.\n• Thông số hiện tại của Sample được chụp lại làm thông số master.\n• Lịch sử thay đổi của Sample được copy sang.${sample.customerApprovalStatus !== "Approved" ? "\n• Customer approval của Sample sẽ được đặt = Approved (hôm nay)." : ""}`;
+    if (!confirm(msg)) return null;
+    const approved = sample.customerApprovalStatus === "Approved" ? sample : {
+      ...sample, customerApprovalStatus: "Approved", customerApprovalDate: sample.customerApprovalDate || todayStr(),
+      customerApprovalBy: sample.customerApprovalBy || currentUser?.full_name || currentUser?.email || "",
+    };
+    const m = masterFromSample(approved);
+    const changes = (sample.revisions || []).map((r) => ({ ...r, id: "MPC" + r.id, masterProductId: m.id }));
+    try {
+      await saveMaster(m);
+      for (const c of changes) await saveMasterChange(c);
+    } catch (e) {
+      alert("Chuyển sang Master Products thất bại: " + (e?.message || e) + (/duplicate|unique|23505/i.test(String(e?.message)) ? "\n\nMã ERP này đã tồn tại trong Master Products — bấm Tải lại ở Master Products." : ""));
+      return null;
+    }
+    setMaster((x) => ({ ...x, masterProducts: [...x.masterProducts, m], changes: [...x.changes, ...changes] }));
+    if (approved !== sample) setAndSave.samples(samples.map((x) => (x.id === sample.id ? approved : x)));
+    return approved;
+  };
+  const uiAtoms = { Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD };
+
   const NAV = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
     { key: "customers", label: "Customers", icon: Users, module: "customers" },
     { key: "quotes", label: "Quotes", icon: FileText, module: "quotes" },
     { key: "orders", label: "Orders", icon: ShoppingCart, module: "orders" },
-    { key: "samples", label: "Products", icon: Boxes, module: "samples" },
+    { key: "pi", label: "PI / PO", icon: ReceiptText, module: "pi" },
+    { key: "samples", label: "Sample", icon: Boxes, module: "samples" },
+    { key: "masterProducts", label: "Master Products", icon: Package, module: "masterProducts" },
     { key: "tasks", label: "Tasks", icon: ListTodo, module: "tasks" },
     { key: "calendar", label: "Calendar", icon: CalendarDays, module: "calendar" },
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
@@ -1447,8 +1511,8 @@ function levelCan(level, module, action = "view") {
         </div>
         {(() => {
           const groups = [
-            ["GENERAL", NAV.filter(n => ["samples","tasks","calendar"].includes(n.module))],
-            ["SALES", NAV.filter(n => ["dashboard","customers","quotes","orders"].includes(n.module))],
+            ["GENERAL", NAV.filter(n => ["samples","masterProducts","tasks","calendar"].includes(n.module))],
+            ["SALES", NAV.filter(n => ["dashboard","customers","quotes","orders","pi"].includes(n.module))],
             ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping","manufacturingOrders","sampleTests","qc"].includes(n.module))],
             ["TOOLS", levelCan(currentUser?.level, "backup", "export") ? [{ key: "backup", label: "Export Data", icon: Download, onClick: handleExportBackup }] : []],
           ];
@@ -1504,6 +1568,49 @@ function levelCan(level, module, action = "view") {
             saveMaterialPreps={setAndSave.materialPreps}
             tasks={tasks}
             saveTasks={setAndSave.tasks}
+            masterProducts={master.available ? master.masterProducts : null}
+            onTransferToMaster={levelCan(currentUser?.level, "masterProducts", "edit") ? transferSampleToMaster : null}
+            onOpenMaster={(id) => { setMasterFocus(id); setView("masterProducts"); }}
+            focusSampleId={sampleFocus}
+            onFocusUsed={() => setSampleFocus("")}
+          />
+        )}
+        {view === "masterProducts" && levelCan(currentUser?.level, "masterProducts") && (
+          <MasterProductsView
+            ui={uiAtoms}
+            master={master}
+            setMaster={setMaster}
+            reloadMaster={reloadMaster}
+            samples={samples}
+            manufacturingOrders={manufacturingOrders}
+            moProductLines={moProductLines}
+            customers={customers}
+            customerName={customerName}
+            currentUser={currentUser}
+            canEdit={levelCan(currentUser?.level, "masterProducts", "edit")}
+            sampleStages={SAMPLE_STAGES}
+            focusId={masterFocus}
+            onFocusUsed={() => setMasterFocus("")}
+            onOpenSample={(id) => { setSampleFocus(id); setView("samples"); }}
+            onOpenPi={(id) => { setPiFocus(id); setView("pi"); }}
+            onNewTest={levelCan(currentUser?.level, "sampleTests", "edit") ? (id) => { setTestPreset(id); setView("sampleTests"); } : null}
+            onGoto={(v) => setView(v)}
+          />
+        )}
+        {view === "pi" && levelCan(currentUser?.level, "pi") && (
+          <PiView
+            ui={uiAtoms}
+            master={master}
+            setMaster={setMaster}
+            reloadMaster={reloadMaster}
+            manufacturingOrders={manufacturingOrders}
+            customers={customers}
+            customerName={customerName}
+            canEdit={levelCan(currentUser?.level, "pi", "edit")}
+            canDelete={levelCan(currentUser?.level, "pi", "delete")}
+            onOpenMaster={(id) => { setMasterFocus(id); setView("masterProducts"); }}
+            focusId={piFocus}
+            onFocusUsed={() => setPiFocus("")}
           />
         )}
         {view === "tasks" && levelCan(currentUser?.level, "tasks") && (
@@ -1529,6 +1636,13 @@ function levelCan(level, module, action = "view") {
             canDelete={levelCan(currentUser?.level, "sampleTests", "delete")}
             canSettings={Number(currentUser?.level ?? 3) === 0}
             ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }}
+            masterAvailable={master.available}
+            masterProducts={master.masterProducts}
+            manufacturingOrders={manufacturingOrders}
+            moProductLines={moProductLines}
+            presetMasterId={testPreset}
+            onPresetUsed={() => setTestPreset("")}
+            onOpenMaster={(id) => { setMasterFocus(id); setView("masterProducts"); }}
             onCreateMasterProduct={(d) => {
               // v57: "Chuyển sang Products" — test tracking → master product
               const id = nextId(samples, "SA", 5);
@@ -1566,6 +1680,8 @@ function levelCan(level, module, action = "view") {
             customers={customers}
             customerName={customerName}
             currentUser={currentUser}
+            master={master}
+            onOpenMaster={(id) => { setMasterFocus(id); setView("masterProducts"); }}
           />
         )}
       </div></div>
@@ -3291,10 +3407,17 @@ function AIDescriptionModal({ materialLists, productTypes, onApply, onClose }) {
 }
 
 
-function SamplesView({ samples, saveSamples, customers, customerName, productTypes, productTypeName, orders, materialLists, saveMaterialList, materialPreps, saveMaterialPreps, tasks, saveTasks }) {
+function SamplesView({ samples, saveSamples, customers, customerName, productTypes, productTypeName, orders, materialLists, saveMaterialList, materialPreps, saveMaterialPreps, tasks, saveTasks, masterProducts = null, onTransferToMaster = null, onOpenMaster = null, focusSampleId = "", onFocusUsed = null }) {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState(null);
+  // v58: opened from Master Products → "Sample gốc"
+  useEffect(() => {
+    if (!focusSampleId) return;
+    const found = samples.find((x) => x.id === focusSampleId);
+    if (found) setViewing(found);
+    onFocusUsed?.();
+  }, [focusSampleId]);
   const [filterStage, setFilterStage] = useState("All");
   const [filterCustomer, setFilterCustomer] = useState("All");
   const [filterProductStatus, setFilterProductStatus] = useState("All");
@@ -3519,9 +3642,9 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
           <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
-          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Products</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Track and manage all products from development to approval.</div></div>
+          <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Sample</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Mẫu đang phát triển đến khi khách accept → bấm “Chuyển sang Master Products” trong chi tiết mẫu.</div></div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New product</Button></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button></div>
       </div>
 
       {(() => {
@@ -3856,6 +3979,9 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
             saveSamples(samples.map((s) => (s.id === updated.id ? updated : s)));
             setViewing(updated);
           }}
+          masterOf={masterProducts ? masterProducts.find((m) => m.sourceSampleId === viewing.id || (m.erpNo && m.erpNo === String(viewing.erpNo || "").trim())) || null : undefined}
+          onTransferToMaster={onTransferToMaster ? async () => { const updated = await onTransferToMaster(viewing); if (updated) setViewing(updated); } : null}
+          onOpenMaster={onOpenMaster}
         />
       )}
 
@@ -4761,7 +4887,7 @@ function DetailRow({ label, value }) {
   );
 }
 
-function SampleDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR }) {
+function SampleDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR, masterOf, onTransferToMaster, onOpenMaster }) {
   const { mainMaterials = [], finishes = [], woodSurface = [], fabricTypes = [], fabricColors = [], ropeTypes = [], ropeColors = [], cemboardColors = [] } = materialLists;
   const dims = [s.width, s.depth, s.height].filter((v) => v !== "" && v != null).length ? `${s.width || "—"} × ${s.depth || "—"} × ${s.height || "—"} mm` : "";
   const ot = sampleOnTime(s);
@@ -4836,7 +4962,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
   const addRevision = () => { if (!newRevision.changeReason.trim()) return; onSaveSample({ ...s, revisions: [{ ...newRevision, id: "rev" + Date.now() }, ...(s.revisions || [])] }); setNewRevision({ date: todayStr(), changeReason: "", photo: "", note: "" }); };
 
   return (
-    <Panel title={`${s.id} — ${s.name}`} action={<div style={{ display: "flex", gap: 8, alignItems: "center" }}>{ot !== null && (ot ? <Badge tone="green">On time</Badge> : <Badge tone="red">Late</Badge>)}<Button small variant="subtle" onClick={onEdit}>Edit</Button><Button small variant="subtle" onClick={() => onShowQR?.(s.id)}><QrCodeIcon size={13} /> QR</Button><Button small variant="subtle" onClick={() => onExport(s.id)}><Download size={13} /> Export</Button><Button small variant="danger" onClick={onDelete}>Delete</Button><Button small variant="ghost" onClick={onClose}><X size={14} /> Close</Button></div>}>
+    <Panel title={`${s.id} — ${s.name}`} action={<div style={{ display: "flex", gap: 8, alignItems: "center" }}>{ot !== null && (ot ? <Badge tone="green">On time</Badge> : <Badge tone="red">Late</Badge>)}{masterOf ? <Button small variant="subtle" onClick={() => onOpenMaster?.(masterOf.id)}><CheckCircle2 size={13} /> Master {masterOf.erpNo || masterOf.id}</Button> : (masterOf === null && onTransferToMaster ? <Button small onClick={onTransferToMaster}>Chuyển sang Master Products</Button> : null)}<Button small variant="subtle" onClick={onEdit}>Edit</Button><Button small variant="subtle" onClick={() => onShowQR?.(s.id)}><QrCodeIcon size={13} /> QR</Button><Button small variant="subtle" onClick={() => onExport(s.id)}><Download size={13} /> Export</Button><Button small variant="danger" onClick={onDelete}>Delete</Button><Button small variant="ghost" onClick={onClose}><X size={14} /> Close</Button></div>}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
         <div>
           <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 10, border: `1px solid ${COLORS.line}`, marginBottom: 14, background: COLORS.bg, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -6039,6 +6165,7 @@ function ManufacturingOrdersView({
   productionLots, saveProductionLots,
   massProductionTestSamples, saveMassProductionTestSamples,
   samples, customers, customerName, currentUser,
+  master = null, onOpenMaster = null,
 }) {
   const [showMoForm, setShowMoForm] = useState(false);
   const [editingMo, setEditingMo] = useState(null);
@@ -6067,6 +6194,16 @@ function ManufacturingOrdersView({
   const [testResult, setTestResult] = useState("");
 
   const productName = (id) => samples.find((s) => s.id === id)?.name || id || "—";
+  // v58: lines point to Master Products (product_id stays = source Sample for the approval gate / FK)
+  const useMaster = Boolean(master?.available);
+  const masterList = useMaster ? master.masterProducts : [];
+  const masterById = new Map(masterList.map((m) => [m.id, m]));
+  const pis = useMaster ? master.pis : [];
+  const piById = new Map(pis.map((p) => [p.id, p]));
+  const lineLabel = (l) => {
+    const m = l.masterProductId && masterById.get(l.masterProductId);
+    return m ? `${m.erpNo || m.id} — ${m.description || String(m.name || "").split("\n")[0]}` : productName(l.productId);
+  };
   const linesForMo = (moId) => moProductLines.filter((l) => l.moId === moId);
   const lotsForLine = (lineId) => productionLots.filter((l) => l.moProductLineId === lineId);
   const testsForMo = (moId) => massProductionTestSamples.filter((t) => t.moId === moId);
@@ -6074,10 +6211,17 @@ function ManufacturingOrdersView({
   const openMo = manufacturingOrders.find((m) => m.id === openMoId) || null;
 
   const startNewMo = () => {
-    setEditingMo({ id: "", moNo: "", customerId: customers[0]?.id || "", poReference: "", orderQtyTotal: "", plannedShipDate: "", status: "Draft", notes: "" });
+    setEditingMo({ id: "", moNo: "", customerId: customers[0]?.id || "", poReference: "", orderQtyTotal: "", plannedShipDate: "", status: "Draft", notes: "", moType: "Đại trà", issueDate: todayStr(), description: "", piId: "" });
     setShowMoForm(true);
   };
-  const startEditMo = (mo) => { setEditingMo({ ...mo }); setShowMoForm(true); };
+  const startEditMo = (mo) => { setEditingMo({ moType: "Đại trà", issueDate: "", description: "", piId: "", ...mo }); setShowMoForm(true); };
+  const pickPi = (piId) => {
+    const p = piById.get(piId);
+    setEditingMo((m) => ({
+      ...m, piId,
+      ...(p ? { customerId: p.customerId || m.customerId, poReference: p.poNo || m.poReference, plannedShipDate: m.plannedShipDate || p.shipDate || "" } : {}),
+    }));
+  };
   const submitMo = (e) => {
     e.preventDefault();
     if (!editingMo.moNo.trim()) { alert("Nhập mã MO."); return; }
@@ -6103,7 +6247,7 @@ function ManufacturingOrdersView({
 
   // Approval-before-mass-production gate. Standard = product already approved by
   // customer. Exception = logged approval with a required reason.
-  const addLineStandard = (mo, product, qty) => {
+  const addLineStandard = (mo, product, qty, masterProductId = "") => {
     const approvalId = newUuid();
     const lineId = newUuid();
     saveProductionApprovals([...productionApprovals, {
@@ -6114,13 +6258,42 @@ function ManufacturingOrdersView({
     saveMoProductLines([...moProductLines, {
       id: lineId, moId: mo.id, productId: product.id, qtyOrdered: qty || "", unitPrice: "",
       productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "",
-      massProductionApprovalId: approvalId, isException: false,
+      massProductionApprovalId: approvalId, isException: false, masterProductId,
     }]);
     setShowAddLine(false); setNewLineProductId(""); setNewLineQty("");
   };
 
+  // v58: add every product of the linked PI that is not in this MO yet (qty / price from the PI).
+  const addLinesFromPi = (mo) => {
+    const piLines = (master?.piLines || []).filter((l) => l.piId === mo.piId);
+    const have = new Set(linesForMo(mo.id).map((l) => l.masterProductId).filter(Boolean));
+    const todo = piLines.filter((l) => l.masterProductId && !have.has(l.masterProductId));
+    const missing = todo.filter((l) => !samples.some((s) => s.id === masterById.get(l.masterProductId)?.sourceSampleId));
+    if (!todo.length) { alert("Tất cả sản phẩm của PI đã có trong LSX này."); return; }
+    if (missing.length) { alert(`Không tìm thấy Sample gốc của ${missing.map((l) => masterById.get(l.masterProductId)?.erpNo || l.masterProductId).join(", ")} — bỏ qua các mã này.`); }
+    const ok = todo.filter((l) => !missing.includes(l));
+    if (!ok.length) return;
+    const approvals = [], lines = [];
+    for (const pl of ok) {
+      const m = masterById.get(pl.masterProductId);
+      const approvalId = newUuid(), lineId = newUuid();
+      approvals.push({ id: approvalId, productId: m.sourceSampleId, moProductLineId: lineId, approvalType: "Standard", customerConfirmationReference: piById.get(mo.piId)?.piNo || "", reason: "", approvedBy: currentUser?.full_name || currentUser?.email || "", approvedAt: new Date().toISOString(), status: "Approved" });
+      lines.push({ id: lineId, moId: mo.id, productId: m.sourceSampleId, qtyOrdered: pl.qty ?? "", unitPrice: pl.unitPrice ?? "", productionStage: "Not Started", stageStatus: "On track", plannedCompleteDate: "", actualCompleteDate: "", massProductionApprovalId: approvalId, isException: false, masterProductId: m.id });
+    }
+    saveProductionApprovals([...productionApprovals, ...approvals]);
+    saveMoProductLines([...moProductLines, ...lines]);
+  };
+
   const confirmAddLine = () => {
-    const product = samples.find((s) => s.id === newLineProductId);
+    if (newLineProductId.startsWith("mp:")) {
+      const m = masterById.get(newLineProductId.slice(3));
+      const src = m && samples.find((s) => s.id === m.sourceSampleId);
+      if (!m) { alert("Chọn một Master Product."); return; }
+      if (!src) { alert(`Không tìm thấy Sample gốc (${m.sourceSampleId || "trống"}) của ${m.erpNo}. LSX cần Sample gốc để liên kết duyệt sản xuất.`); return; }
+      addLineStandard(openMo, src, newLineQty, m.id); // master = khách đã accept → duyệt Standard
+      return;
+    }
+    const product = samples.find((s) => s.id === newLineProductId.replace(/^s:/, ""));
     if (!product) { alert("Chọn một Product."); return; }
     if (product.customerApprovalStatus === "Approved") {
       addLineStandard(openMo, product, newLineQty);
@@ -6214,6 +6387,21 @@ function ManufacturingOrdersView({
                 </Select>
               </Field>
             </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 12 }}>
+              <Field label="Loại LSX">
+                <Select value={editingMo.moType || "Đại trà"} onChange={(e) => setEditingMo({ ...editingMo, moType: e.target.value })}>
+                  {LSX_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </Select>
+              </Field>
+              <Field label="Ngày thực hiện"><Input type="date" value={editingMo.issueDate || ""} onChange={(e) => setEditingMo({ ...editingMo, issueDate: e.target.value })} /></Field>
+              <Field label={useMaster ? "PI liên kết (tự điền khách, PO, ngày ship)" : "PI liên kết (cần chạy SQL v58)"}>
+                <Select value={editingMo.piId || ""} disabled={!useMaster} onChange={(e) => pickPi(e.target.value)}>
+                  <option value="">— Không / chưa có PI —</option>
+                  {pis.filter((p) => p.status !== "Cancelled" || p.id === editingMo.piId).sort((a, b) => String(b.piDate).localeCompare(String(a.piDate))).map((p) => <option key={p.id} value={p.id}>{p.piNo}{p.poNo ? ` · PO ${p.poNo}` : " · chưa có PO"} · {customerName(p.customerId)}</option>)}
+                </Select>
+              </Field>
+            </div>
+            <Field label="Mô tả LSX (thay đổi / điều chỉnh gì, lý do…)"><TextArea rows={2} value={editingMo.description || ""} onChange={(e) => setEditingMo({ ...editingMo, description: e.target.value })} placeholder="VD: Điều chỉnh màu sơn TH-12 theo email khách 10/10; tăng chân +20mm" /></Field>
             <Field label="Notes"><TextArea rows={2} value={editingMo.notes} onChange={(e) => setEditingMo({ ...editingMo, notes: e.target.value })} /></Field>
             <div style={{ display: "flex", gap: 8 }}>
               <Button type="submit">{editingMo.id ? "Save" : "Create MO"}</Button>
@@ -6227,7 +6415,10 @@ function ManufacturingOrdersView({
         <Table
           columns={[
             { key: "moNo", label: "MO No." },
+            { key: "moType", label: "Loại", render: (m) => <Badge tone={{ "Mẫu": "teal", "Đại trà": "wood", "Thay đổi": "amber", "Điều chỉnh": "red" }[m.moType] || "neutral"}>{m.moType || "Đại trà"}</Badge> },
+            { key: "issueDate", label: "Ngày thực hiện", render: (m) => m.issueDate ? fmtDate(m.issueDate) : "—" },
             { key: "customer", label: "Customer", render: (m) => customerName(m.customerId) },
+            { key: "po", label: "PO / PI", render: (m) => [m.poReference, piById.get(m.piId)?.piNo].filter(Boolean).join(" / ") || "—" },
             { key: "lines", label: "Products", render: (m) => linesForMo(m.id).length },
             { key: "orderQtyTotal", label: "Total qty" },
             { key: "plannedShipDate", label: "Planned ship" },
@@ -6255,23 +6446,42 @@ function ManufacturingOrdersView({
           action={<Button small variant="ghost" onClick={() => setOpenMoId(null)}><X size={14} /> Close</Button>}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 13 }}>
+              <Badge tone={{ "Mẫu": "teal", "Đại trà": "wood", "Thay đổi": "amber", "Điều chỉnh": "red" }[openMo.moType] || "neutral"}>{openMo.moType || "Đại trà"}</Badge>
+              <span>Ngày thực hiện: <b>{openMo.issueDate ? fmtDate(openMo.issueDate) : "—"}</b></span>
+              {openMo.poReference && <span>· PO <b>{openMo.poReference}</b></span>}
+              {openMo.piId && <span>· PI <b>{piById.get(openMo.piId)?.piNo || "?"}</b></span>}
+              {openMo.description && <div style={{ flexBasis: "100%", color: COLORS.inkSoft, whiteSpace: "pre-wrap" }}>{openMo.description}</div>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <SectionHeading>Product lines (tiến độ riêng từng Product)</SectionHeading>
-              <Button small onClick={() => setShowAddLine(true)}><Plus size={14} /> Add product</Button>
+              <div style={{ display: "flex", gap: 8 }}>
+                {useMaster && openMo.piId && <Button small variant="subtle" onClick={() => addLinesFromPi(openMo)}><Plus size={14} /> Thêm dòng từ PI</Button>}
+                <Button small onClick={() => setShowAddLine(true)}><Plus size={14} /> Add product</Button>
+              </div>
             </div>
 
             {showAddLine && (
               <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
-                  <Field label="Product">
+                  <Field label={useMaster ? "Sản phẩm (Master Products)" : "Product"}>
                     <Select value={newLineProductId} onChange={(e) => setNewLineProductId(e.target.value)}>
-                      <option value="">— Chọn Product —</option>
-                      {samples.map((s) => <option key={s.id} value={s.id}>{s.id} — {s.name} ({s.customerApprovalStatus || "Pending"})</option>)}
+                      <option value="">{useMaster ? "— Chọn Master Product —" : "— Chọn Product —"}</option>
+                      {useMaster ? (
+                        <>
+                          <optgroup label="Master Products (khách đã accept)">
+                            {masterList.filter((m) => m.status === "Active").sort((a, b) => String(a.erpNo).localeCompare(String(b.erpNo))).map((m) => <option key={m.id} value={"mp:" + m.id}>{m.erpNo || m.id} — {m.description || String(m.name || "").split("\n")[0]} · {customerName(m.customerId)}</option>)}
+                          </optgroup>
+                          <optgroup label="Sample chưa accept (cần phê duyệt ngoại lệ)">
+                            {samples.filter((s) => !masterList.some((m) => m.sourceSampleId === s.id || (m.erpNo && m.erpNo === String(s.erpNo || "").trim()))).map((s) => <option key={s.id} value={"s:" + s.id}>{s.id} — {String(s.name || "").split("\n")[0]} ({s.customerApprovalStatus || "Pending"})</option>)}
+                          </optgroup>
+                        </>
+                      ) : samples.map((s) => <option key={s.id} value={"s:" + s.id}>{s.id} — {s.name} ({s.customerApprovalStatus || "Pending"})</option>)}
                     </Select>
                   </Field>
                   <Field label="Qty"><Input type="number" value={newLineQty} onChange={(e) => setNewLineQty(e.target.value)} /></Field>
                 </div>
-                {newLineProductId && samples.find((s) => s.id === newLineProductId)?.customerApprovalStatus !== "Approved" && (
+                {newLineProductId.startsWith("s:") && samples.find((s) => s.id === newLineProductId.slice(2))?.customerApprovalStatus !== "Approved" && (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", color: COLORS.amber, fontSize: 12.5, background: COLORS.amberSoft, padding: "8px 10px", borderRadius: 8 }}>
                     <ShieldAlert size={15} /> Product này chưa được khách duyệt — thêm vào MO sẽ yêu cầu tạo phê duyệt ngoại lệ.
                   </div>
@@ -6304,7 +6514,9 @@ function ManufacturingOrdersView({
 
             <Table
               columns={[
-                { key: "product", label: "Product", render: (l) => productName(l.productId) },
+                { key: "product", label: "Product", render: (l) => l.masterProductId && masterById.get(l.masterProductId) && onOpenMaster
+                  ? <button type="button" onClick={(e) => { e.stopPropagation(); onOpenMaster(l.masterProductId); }} style={{ border: "none", background: "none", padding: 0, color: COLORS.wood, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>{lineLabel(l)}</button>
+                  : lineLabel(l) },
                 { key: "qtyOrdered", label: "Qty" },
                 {
                   key: "approval", label: "Approval",
@@ -6344,7 +6556,7 @@ function ManufacturingOrdersView({
 
             {lotFor && (
               <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14 }}>
-                <SectionHeading>Thêm lô/batch cho {productName(moProductLines.find((l) => l.id === lotFor)?.productId)}</SectionHeading>
+                <SectionHeading>Thêm lô/batch cho {lineLabel(moProductLines.find((l) => l.id === lotFor) || {})}</SectionHeading>
                 <form onSubmit={submitLot} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                   <Field label="Số lô"><Input value={lotNo} onChange={(e) => setLotNo(e.target.value)} /></Field>
                   <Field label="Số lượng"><Input type="number" value={lotQty} onChange={(e) => setLotQty(e.target.value)} /></Field>

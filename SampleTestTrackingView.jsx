@@ -18,6 +18,7 @@ import PhotoProof from "./PhotoProof.jsx";
 import { QcForm } from "./QcView.jsx";
 import { loadQc, saveQc, deleteQc } from "./qcApi";
 import { qcFieldsFromTest, qcIdForTest, mergeQcSettings } from "./qcLogic";
+import { lsxForMaster } from "./masterApi";
 
 const PART_STEPS = ["KHUNG_SAT", "HW", "NEM"];
 const PART_SUGGESTIONS = {
@@ -82,7 +83,8 @@ function saveErrorHint(e) {
   return /PGRST204|column/i.test(m) ? "\n\nCó thể chưa chạy file SQL v57 (tanhoa_v57_qc_photos_change_history.sql) trong Supabase." : "";
 }
 
-export default function SampleTestTrackingView({ samples = [], customers = [], customerName, materialLists = {}, currentUser, canEdit = true, canDelete = true, canSettings = true, ui, onCreateMasterProduct }) {
+export default function SampleTestTrackingView({ samples = [], customers = [], customerName, materialLists = {}, currentUser, canEdit = true, canDelete = true, canSettings = true, ui, onCreateMasterProduct,
+  masterAvailable = false, masterProducts = [], manufacturingOrders = [], moProductLines = [], presetMasterId = "", onPresetUsed, onOpenMaster }) {
   const { Button, Panel, Badge, Field, Input, Select, TextArea, COLORS, FONT_HEAD } = ui;
   const [state, setState] = useState({ loading: true, available: true, error: "" });
   const [trackings, setTrackings] = useState([]);
@@ -113,6 +115,15 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
     }
   };
   useEffect(() => { reload(); }, []);
+  // v58: "Mang đi test" from a Master Product opens the form with that product picked
+  const [initialMasterId, setInitialMasterId] = useState("");
+  useEffect(() => {
+    if (!presetMasterId) return;
+    setInitialMasterId(presetMasterId); setCreating(true); setOpenId(""); setTab("list");
+    onPresetUsed?.();
+  }, [presetMasterId]);
+  const masterCtx = { samples, mos: manufacturingOrders, moLines: moProductLines };
+  const lsxOptionsFor = (m) => (m ? lsxForMaster(m, masterCtx).filter((x) => x.kind === "mo") : []);
 
   const run = (promise, what) => promise.catch((e) => { alert(`${what} thất bại: ${e?.message || e}${saveErrorHint(e)}\nDữ liệu sẽ được tải lại.`); reload(); });
 
@@ -208,7 +219,8 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
   const createTracking = async (draft) => {
     const id = uid();
     const tracking = { id, sampleId: draft.sampleId || "", lsxNo: draft.lsxNo, owner: draft.owner, startDate: draft.startDate, testDeadline: draft.testDeadline, weaveOn: draft.weaveOn, baselineLockedAt: "", status: "Active", notes: "",
-      erpNo: draft.erpNo || "", productDescription: draft.productDescription || "", customerId: draft.customerId || "", imageUrl: draft.imageUrl || "" };
+      erpNo: draft.erpNo || "", productDescription: draft.productDescription || "", customerId: draft.customerId || "", imageUrl: draft.imageUrl || "",
+      masterProductId: draft.masterProductId || "", moId: draft.moId || "" };
     const rows = settings.steps
       .filter((s) => draft.na.includes(s.code) || draft.fixed[s.code])
       .map((s) => ({ id: `${id}:${s.code}`, trackingId: id, stepCode: s.code, planDate: draft.na.includes(s.code) ? "" : (draft.fixed[s.code] || ""), actualDate: "", notApplicable: draft.na.includes(s.code), rescheduleDate: "", note: "" }));
@@ -218,6 +230,7 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
       setTrackings((l) => [...l, tracking]);
       setStepRows((l) => [...l, ...rows]);
       setCreating(false);
+      setInitialMasterId("");
       setOpenId(id);
     } catch (e) {
       alert("Tạo theo dõi thất bại: " + (e?.message || e) + saveErrorHint(e));
@@ -225,6 +238,14 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
   };
   const transferToMaster = async (entry) => {
     const { tracking: t, info } = entry;
+    if (masterAvailable) {
+      // v58: test samples belong to a Master Product — link by ERP code (never creates products from here).
+      const m = info.erpNo && masterProducts.find((x) => x.erpNo && x.erpNo.toLowerCase() === info.erpNo.trim().toLowerCase());
+      if (!m) { alert(`Mã ${info.erpNo || "(trống)"} chưa có trong Master Products.\nVào Sample → mở mẫu khách đã accept → "Chuyển sang Master Products", rồi quay lại liên kết.`); return; }
+      if (!confirm(`Liên kết lượt test này với Master Product ${m.erpNo}?`)) return;
+      patchTracking(t.id, { masterProductId: m.id, sampleId: t.sampleId || m.sourceSampleId || "" });
+      return;
+    }
     if (!info.erpNo) { alert("Nhập Mã ERP trước khi chuyển sang Products."); return; }
     const existing = samples.find((x) => String(x.erpNo || "").trim().toLowerCase() === info.erpNo.trim().toLowerCase());
     if (existing) {
@@ -298,7 +319,8 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
 
       {creating && (
         <NewTrackingForm ui={ui} samples={samples} customers={customers} customerName={customerName} materialLists={materialLists} settings={settings} existing={trackings} currentUser={currentUser}
-          onCancel={() => setCreating(false)} onCreate={createTracking} />
+          masterAvailable={masterAvailable} masterProducts={masterProducts} lsxOptionsFor={lsxOptionsFor} initialMasterId={initialMasterId}
+          onCancel={() => { setCreating(false); setInitialMasterId(""); }} onCreate={createTracking} />
       )}
 
       {open && !creating && (
@@ -306,6 +328,7 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
           onBack={() => setOpenId("")} patchTracking={patchTracking} setStep={setStep} lockBaseline={lockBaseline}
           upsertPart={upsertPart} removePart={removePart} upsertTest={upsertTest} removeTest={removeTest} removeTracking={removeTracking}
           customers={customers} transferToMaster={transferToMaster} canTransfer={Boolean(onCreateMasterProduct)}
+          masterAvailable={masterAvailable} masterProducts={masterProducts} lsxOptionsFor={lsxOptionsFor} onOpenMaster={onOpenMaster}
           qcRecords={qc.records.filter((r) => r.trackingId === open.id)} openQcForStep={openQcForStep} onOpenQc={setQcDraft} />
       )}
       {qcDraft && (
@@ -472,16 +495,23 @@ function TodayList({ ui, entries, customerName, onOpen }) {
 }
 
 /* ================= Create ================= */
-function NewTrackingForm({ ui, samples, customers, customerName, materialLists, settings, existing, currentUser, onCancel, onCreate }) {
+function NewTrackingForm({ ui, samples, customers, customerName, materialLists, settings, existing, currentUser, onCancel, onCreate, masterAvailable = false, masterProducts = [], lsxOptionsFor = () => [], initialMasterId = "" }) {
   const { Panel, Button, Field, Input, Select, TextArea, COLORS } = ui;
-  const [mode, setMode] = useState("new"); // new = nhập riêng | pick = chọn từ Products
+  // v58: when Master Products exist, a test sample is always taken from a Master Product + an LSX.
+  const [mode, setMode] = useState(masterAvailable ? "master" : "new"); // master | new = nhập riêng | pick = chọn từ Products
+  const [masterId, setMasterId] = useState("");
+  const [moId, setMoId] = useState("");
   const [sampleId, setSampleId] = useState("");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState({ erpNo: "", productDescription: "", customerId: customers[0]?.id || "", imageUrl: "", lsxNo: "", owner: currentUser?.full_name || "", startDate: todayIso(), testDeadline: "", weaveOn: "", na: [], fixed: {} });
-  const product = mode === "pick" ? samples.find((s) => s.id === sampleId) : null;
+  const masterSel = mode === "master" ? masterProducts.find((m) => m.id === masterId) || null : null;
+  const lsxOptions = lsxOptionsFor(masterSel);
+  const lsxSel = lsxOptions.find((x) => x.key === moId) || null;
+  const product = mode === "pick" ? samples.find((s) => s.id === sampleId) : mode === "master" ? samples.find((s) => s.id === masterSel?.sourceSampleId) || null : null;
   const trackedErp = new Set(existing.filter((t) => t.status !== "Closed").map((t) => String(t.erpNo || samples.find((s) => s.id === t.sampleId)?.erpNo || "").toLowerCase()).filter(Boolean));
   const q = search.trim().toLowerCase();
   const options = samples.filter((s) => !q || `${s.erpNo} ${s.name} ${s.id}`.toLowerCase().includes(q)).slice(0, 200);
+  const masterOptions = masterProducts.filter((m) => m.status === "Active" && (!q || `${m.erpNo} ${m.description} ${m.name}`.toLowerCase().includes(q))).slice(0, 300);
   const erpNow = (mode === "pick" ? product?.erpNo : draft.erpNo) || "";
   const dupErp = erpNow && trackedErp.has(erpNow.toLowerCase());
   const masterMatch = mode === "new" && draft.erpNo.trim() ? samples.find((s) => String(s.erpNo || "").trim().toLowerCase() === draft.erpNo.trim().toLowerCase()) : null;
@@ -493,10 +523,30 @@ function NewTrackingForm({ ui, samples, customers, customerName, materialLists, 
     const sug = suggestFromProduct(p, materialLists);
     setDraft((d) => ({ ...d, erpNo: p.erpNo || "", productDescription: firstLine(p.name), customerId: p.customerId || d.customerId, lsxNo: p.manufacturingOrderNo || d.lsxNo, weaveOn: sug.weaveOn, na: sug.na }));
   };
+  const pickMaster = (id) => {
+    setMasterId(id);
+    const m = masterProducts.find((x) => x.id === id);
+    if (!m) return;
+    const src = samples.find((s) => s.id === m.sourceSampleId);
+    const sug = src ? suggestFromProduct(src, materialLists) : { weaveOn: "", na: [] };
+    const opts = lsxOptionsFor(m);
+    const firstMass = opts.find((x) => x.type === "Đại trà") || opts[0];
+    setMoId(firstMass?.key || "");
+    setDraft((d) => ({ ...d, erpNo: m.erpNo || "", productDescription: m.description || firstLine(m.name), customerId: m.customerId || d.customerId, imageUrl: m.imageUrl || "", weaveOn: sug.weaveOn, na: sug.na }));
+  };
+  useEffect(() => { if (initialMasterId && masterAvailable) pickMaster(initialMasterId); }, [initialMasterId]);
   const toggleNa = (code) => setDraft((d) => ({ ...d, na: d.na.includes(code) ? d.na.filter((c) => c !== code) : [...d.na, code] }));
   const fixedSteps = settings.steps.filter((s) => s.planType === "fixed");
   const submit = (e) => {
     e.preventDefault();
+    if (mode === "master") {
+      if (!masterSel) { alert("Chọn sản phẩm trong Master Products."); return; }
+      if (!lsxSel) { alert("Chọn LSX mà hàng test được lấy ra (bắt buộc)."); return; }
+      if (!draft.startDate) { alert("Nhập ngày bắt đầu."); return; }
+      if (lsxSel.type !== "Đại trà" && !confirm(`LSX ${lsxSel.moNo} là loại "${lsxSel.type}", không phải LSX đại trà. Vẫn tạo?`)) return;
+      onCreate({ ...draft, erpNo: (masterSel.erpNo || "").trim(), sampleId: masterSel.sourceSampleId || "", masterProductId: masterSel.id, moId: lsxSel.key, lsxNo: lsxSel.moNo });
+      return;
+    }
     if (mode === "pick" && !sampleId) { alert("Chọn sản phẩm trong Products."); return; }
     if (mode === "new" && !draft.erpNo.trim()) { alert("Nhập Mã ERP."); return; }
     if (!draft.startDate) { alert("Nhập ngày bắt đầu."); return; }
@@ -509,13 +559,47 @@ function NewTrackingForm({ ui, samples, customers, customerName, materialLists, 
   return (
     <Panel title="Theo dõi mẫu mới" action={<Button small variant="ghost" onClick={onCancel}><X size={14} /> Huỷ</Button>}>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {tabBtn("new", "Nhập thông tin mẫu")}
-          {tabBtn("pick", "Lấy từ Products có sẵn")}
-          <span style={{ fontSize: 12, color: COLORS.inkSoft }}>Module này chỉ theo dõi tiến độ mẫu test. Khi chốt, bấm “Chuyển sang Products” để đưa thông tin vào bảng master.</span>
-        </div>
+        {masterAvailable ? (
+          <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>Hàng mang đi test lấy từ <b>Master Products</b> (mã khách đã accept) và phải thuộc một <b>LSX đại trà</b> trong Manufacturing Orders.</div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {tabBtn("new", "Nhập thông tin mẫu")}
+            {tabBtn("pick", "Lấy từ Products có sẵn")}
+            <span style={{ fontSize: 12, color: COLORS.inkSoft }}>Module này chỉ theo dõi tiến độ mẫu test. Khi chốt, bấm “Chuyển sang Products” để đưa thông tin vào bảng master.</span>
+          </div>
+        )}
 
-        {mode === "new" ? (
+        {mode === "master" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)", gap: 14 }}>
+            <Field label="Master Product (tìm theo mã ERP / mô tả) *">
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Gõ mã ERP hoặc mô tả…" />
+              <Select value={masterId} onChange={(e) => pickMaster(e.target.value)} size={6} style={{ marginTop: 6, height: "auto" }}>
+                {masterOptions.map((m) => <option key={m.id} value={m.id}>{m.erpNo || "(no ERP)"} — {m.description || firstLine(m.name)} · {customerName(m.customerId)}</option>)}
+              </Select>
+              {!masterProducts.length && <div style={{ fontSize: 12.5, color: COLORS.amber, marginTop: 6 }}>Chưa có Master Product nào. Chuyển mẫu đã accept từ Sample sang Master trước.</div>}
+            </Field>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <ProductThumb image={masterSel?.imageUrl || product?.image} ui={ui} size={96} />
+              <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700 }}>{masterSel?.erpNo || "Chưa chọn"}</div>
+                <div style={{ color: COLORS.inkSoft }}>{masterSel ? customerName(masterSel.customerId) : ""}</div>
+              </div>
+            </div>
+            {masterSel && (
+              <>
+                <Field label="LSX lấy hàng đi test *">
+                  <Select value={moId} onChange={(e) => setMoId(e.target.value)} style={!lsxSel ? { borderColor: COLORS.amber } : undefined}>
+                    <option value="">— Chọn LSX —</option>
+                    {lsxOptions.map((x) => <option key={x.key} value={x.key}>{x.type} · {x.moNo}{x.date ? ` · ${fmt(x.date)}` : ""}{x.poReference ? ` · PO ${x.poReference}` : ""}</option>)}
+                  </Select>
+                  {!lsxOptions.length && <div style={{ fontSize: 12.5, color: COLORS.amber, marginTop: 6 }}>Mã này chưa nằm trong LSX nào. Tạo LSX đại trà trong Manufacturing Orders (thêm mã vào LSX) rồi quay lại.</div>}
+                  {lsxSel && lsxSel.type !== "Đại trà" && <div style={{ fontSize: 12.5, color: COLORS.amber, marginTop: 6 }}>LSX này là loại “{lsxSel.type}”, không phải đại trà.</div>}
+                </Field>
+                <Field label="Product Description (mô tả ngắn, sửa được)"><Input value={draft.productDescription} onChange={(e) => setDraft({ ...draft, productDescription: e.target.value })} /></Field>
+              </>
+            )}
+          </div>
+        ) : mode === "new" ? (
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.6fr) minmax(0,0.9fr) 120px", gap: 12, alignItems: "start" }}>
             <Field label="Mã ERP *"><Input value={draft.erpNo} onChange={(e) => setDraft({ ...draft, erpNo: e.target.value })} placeholder="10DGRM0004ASSKL0536" /></Field>
             <Field label="Product Description (mô tả ngắn)"><TextArea rows={2} value={draft.productDescription} onChange={(e) => setDraft({ ...draft, productDescription: e.target.value })} placeholder="VD: Table top SET 8 – W1200xD1200, Acacia + superstone" /></Field>
@@ -551,7 +635,9 @@ function NewTrackingForm({ ui, samples, customers, customerName, materialLists, 
         {dupErp && <div style={{ color: COLORS.amber, fontWeight: 600, fontSize: 12.5 }}>Mã ERP này đang được theo dõi — tạo thêm nghĩa là một lượt test mới.</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 12 }}>
-          <Field label="Số LSX mẫu"><Input value={draft.lsxNo} onChange={(e) => setDraft({ ...draft, lsxNo: e.target.value })} /></Field>
+          {mode === "master"
+            ? <Field label="LSX"><Input value={lsxSel?.moNo || ""} disabled placeholder="chọn ở trên" /></Field>
+            : <Field label="Số LSX mẫu"><Input value={draft.lsxNo} onChange={(e) => setDraft({ ...draft, lsxNo: e.target.value })} /></Field>}
           <Field label="Người phụ trách"><Input value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} /></Field>
           <Field label="Ngày bắt đầu"><Input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /></Field>
           <Field label="Hạn mang đi test"><Input type="date" value={draft.testDeadline} onChange={(e) => setDraft({ ...draft, testDeadline: e.target.value })} /></Field>
@@ -563,7 +649,7 @@ function NewTrackingForm({ ui, samples, customers, customerName, materialLists, 
           </Field>
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.inkSoft, marginBottom: 6 }}>Mẫu có những công đoạn nào? (bỏ tick = N/A{mode === "pick" ? " — đã gợi ý theo thông số sản phẩm, hãy kiểm tra lại" : ""})</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.inkSoft, marginBottom: 6 }}>Mẫu có những công đoạn nào? (bỏ tick = N/A{mode !== "new" ? " — đã gợi ý theo thông số sản phẩm, hãy kiểm tra lại" : ""})</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {settings.steps.filter((s) => s.source === "input" && s.code !== "LAP_RAP" && s.code !== "NHAN_VE" && s.code !== "DAN_DAY").map((s) => {
               const on = !draft.na.includes(s.code);
@@ -595,10 +681,12 @@ function NewTrackingForm({ ui, samples, customers, customerName, materialLists, 
 }
 
 /* ================= Detail ================= */
-function TrackingDetail({ ui, entry, settings, customerName, canEdit, canDelete, onBack, patchTracking, setStep, lockBaseline, upsertPart, removePart, upsertTest, removeTest, removeTracking, customers = [], transferToMaster, canTransfer, qcRecords = [], openQcForStep, onOpenQc }) {
+function TrackingDetail({ ui, entry, settings, customerName, canEdit, canDelete, onBack, patchTracking, setStep, lockBaseline, upsertPart, removePart, upsertTest, removeTest, removeTracking, customers = [], transferToMaster, canTransfer, qcRecords = [], openQcForStep, onOpenQc, masterAvailable = false, masterProducts = [], lsxOptionsFor = () => [], onOpenMaster }) {
   const { Panel, Button, Badge, Field, Input, Select, TextArea, COLORS } = ui;
   const { tracking: t, product: p, info, computed: c } = entry;
   const ro = !canEdit;
+  const masterOfT = masterAvailable && t.masterProductId ? masterProducts.find((m) => m.id === t.masterProductId) || null : null;
+  const lsxOpts = lsxOptionsFor(masterOfT);
   const dateCell = (value, onChange, disabled) => <Input type="date" value={value || ""} disabled={disabled || ro} onChange={(e) => onChange(e.target.value)} style={{ ...cellInput, width: 128 }} />;
 
   return (
@@ -621,11 +709,16 @@ function TrackingDetail({ ui, entry, settings, customerName, canEdit, canDelete,
                   <Badge tone={statusTone(c.gate)}>Lắp ráp: {c.gate}{c.gate === "Chờ" ? ` (${c.gateMissing.map((s) => s.short).join(", ")})` : ""}</Badge>
                   {c.risk && <Badge tone={c.riskDays > 0 ? "red" : "green"}>Đi test dự kiến {fmt(c.expectedSend)} · {c.risk}</Badge>}
                   {t.baselineLockedAt ? <Badge tone="wood">KH gốc đã chốt {fmt(t.baselineLockedAt)}</Badge> : <Badge tone="amber">KH gốc chưa chốt</Badge>}
-                  {info.linked ? <Badge tone="green">Đã có trong Products ({p.id})</Badge> : <Badge>Chưa chuyển sang Products</Badge>}
+                  {masterAvailable
+                    ? (masterOfT
+                      ? <button type="button" onClick={() => onOpenMaster?.(masterOfT.id)} style={{ border: "none", background: "none", padding: 0, cursor: onOpenMaster ? "pointer" : "default" }}><Badge tone="green">Master: {masterOfT.erpNo || masterOfT.id}</Badge></button>
+                      : <Badge tone="amber">Chưa liên kết Master Products</Badge>)
+                    : (info.linked ? <Badge tone="green">Đã có trong Products ({p.id})</Badge> : <Badge>Chưa chuyển sang Products</Badge>)}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-                {canEdit && !info.linked && canTransfer && <Button small variant="subtle" onClick={() => transferToMaster(entry)}>Chuyển sang Products</Button>}
+                {canEdit && masterAvailable && !masterOfT && <Button small variant="subtle" onClick={() => transferToMaster(entry)}>Liên kết Master Products</Button>}
+                {canEdit && !masterAvailable && !info.linked && canTransfer && <Button small variant="subtle" onClick={() => transferToMaster(entry)}>Chuyển sang Products</Button>}
                 {canEdit && <Button small variant="subtle" onClick={() => lockBaseline(entry)}><Lock size={13} /> Chốt KH gốc</Button>}
                 {canEdit && <Button small variant="subtle" onClick={() => patchTracking(t.id, { status: t.status === "Closed" ? "Active" : "Closed" })}>{t.status === "Closed" ? "Mở lại" : "Đóng theo dõi"}</Button>}
                 {canDelete && <Button small variant="danger" onClick={() => removeTracking(entry)}><Trash2 size={13} /> Xoá</Button>}
@@ -642,7 +735,14 @@ function TrackingDetail({ ui, entry, settings, customerName, canEdit, canDelete,
               </Field>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 10 }}>
-              <Field label="Số LSX mẫu"><BlurInput ui={ui} value={t.lsxNo} disabled={ro} onCommit={(v) => patchTracking(t.id, { lsxNo: v })} /></Field>
+              {masterOfT
+                ? <Field label="LSX lấy hàng đi test">
+                    <Select value={t.moId || ""} disabled={ro} onChange={(e) => { const x = lsxOpts.find((o) => o.key === e.target.value); patchTracking(t.id, { moId: e.target.value, lsxNo: x?.moNo || "" }); }} style={!t.moId ? { borderColor: COLORS.amber } : undefined}>
+                      <option value="">{t.lsxNo ? `${t.lsxNo} (chưa liên kết)` : "— Chọn LSX —"}</option>
+                      {lsxOpts.map((x) => <option key={x.key} value={x.key}>{x.type} · {x.moNo}</option>)}
+                    </Select>
+                  </Field>
+                : <Field label="Số LSX mẫu"><BlurInput ui={ui} value={t.lsxNo} disabled={ro} onCommit={(v) => patchTracking(t.id, { lsxNo: v })} /></Field>}
               <Field label="Người phụ trách"><BlurInput ui={ui} value={t.owner} disabled={ro} onCommit={(v) => patchTracking(t.id, { owner: v })} /></Field>
               <Field label="Ngày bắt đầu"><Input type="date" value={t.startDate} disabled={ro} onChange={(e) => patchTracking(t.id, { startDate: e.target.value })} /></Field>
               <Field label="Hạn mang đi test"><Input type="date" value={t.testDeadline} disabled={ro} onChange={(e) => patchTracking(t.id, { testDeadline: e.target.value })} /></Field>

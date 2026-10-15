@@ -17,6 +17,7 @@ export function trackingToApp(r) {
     startDate: r.start_date || "", testDeadline: r.test_deadline || "", weaveOn: r.weave_on || "",
     baselineLockedAt: r.baseline_locked_at || "", status: r.status || "Active", notes: r.notes || "",
     erpNo: r.erp_no || "", productDescription: r.product_description || "", customerId: r.customer_id || "", imageUrl: r.image_url || "",
+    masterProductId: r.master_product_id || "", moId: r.mo_id || "",
     createdAt: r.created_at || "",
   };
 }
@@ -26,6 +27,9 @@ function trackingToRow(x) {
     start_date: nz(x.startDate), test_deadline: nz(x.testDeadline), weave_on: nz(x.weaveOn),
     baseline_locked_at: nz(x.baselineLockedAt), status: x.status || "Active", notes: nz(x.notes),
     erp_no: nz(x.erpNo), product_description: nz(x.productDescription), customer_id: nz(x.customerId), image_url: nz(x.imageUrl),
+    // v58 columns: only sent when set, so trackings still save if the v58 SQL has not been run yet.
+    ...(x.masterProductId ? { master_product_id: x.masterProductId } : {}),
+    ...(x.moId ? { mo_id: x.moId } : {}),
     updated_at: new Date().toISOString(),
   };
 }
