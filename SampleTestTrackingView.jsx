@@ -216,7 +216,7 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
     setOpenId("");
     run(deleteTracking(entry.id), "Xoá theo dõi");
   };
-  const createTracking = async (draft) => {
+  const buildTracking = (draft) => {
     const id = uid();
     const tracking = { id, sampleId: draft.sampleId || "", lsxNo: draft.lsxNo, owner: draft.owner, startDate: draft.startDate, testDeadline: draft.testDeadline, weaveOn: draft.weaveOn, baselineLockedAt: "", status: "Active", notes: "",
       erpNo: draft.erpNo || "", productDescription: draft.productDescription || "", customerId: draft.customerId || "", imageUrl: draft.imageUrl || "",
@@ -224,17 +224,29 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
     const rows = settings.steps
       .filter((s) => draft.na.includes(s.code) || draft.fixed[s.code])
       .map((s) => ({ id: `${id}:${s.code}`, trackingId: id, stepCode: s.code, planDate: draft.na.includes(s.code) ? "" : (draft.fixed[s.code] || ""), actualDate: "", notApplicable: draft.na.includes(s.code), rescheduleDate: "", note: "" }));
+    return { tracking, rows };
+  };
+  // v58.2: one or many test samples at once (batch from Master Products)
+  const createTracking = async (input) => {
+    const drafts = Array.isArray(input) ? input : [input];
+    const done = [];
     try {
-      await saveTracking(tracking);
-      if (rows.length) await saveStepRows(rows);
-      setTrackings((l) => [...l, tracking]);
-      setStepRows((l) => [...l, ...rows]);
-      setCreating(false);
-      setInitialMasterId("");
-      setOpenId(id);
+      for (const d of drafts) {
+        const { tracking, rows } = buildTracking(d);
+        await saveTracking(tracking);
+        if (rows.length) await saveStepRows(rows);
+        done.push({ tracking, rows });
+      }
     } catch (e) {
-      alert("Tạo theo dõi thất bại: " + (e?.message || e) + saveErrorHint(e));
+      alert(`Tạo theo dõi thất bại sau ${done.length}/${drafts.length} mã: ` + (e?.message || e) + saveErrorHint(e));
     }
+    if (!done.length) return;
+    setTrackings((l) => [...l, ...done.map((x) => x.tracking)]);
+    setStepRows((l) => [...l, ...done.flatMap((x) => x.rows)]);
+    setCreating(false);
+    setInitialMasterId("");
+    if (done.length === 1) setOpenId(done[0].tracking.id);
+    else { setOpenId(""); setTab("list"); setFilter("active"); }
   };
   const transferToMaster = async (entry) => {
     const { tracking: t, info } = entry;
@@ -318,7 +330,11 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
       )}
 
       {creating && (
-        <NewTrackingForm ui={ui} samples={samples} customers={customers} customerName={customerName} materialLists={materialLists} settings={settings} existing={trackings} currentUser={currentUser}
+        masterAvailable ? (
+          <NewBatchFromMasterForm ui={ui} samples={samples} customerName={customerName} materialLists={materialLists} settings={settings} existing={trackings} currentUser={currentUser}
+            masterProducts={masterProducts} lsxOptionsFor={lsxOptionsFor} initialMasterId={initialMasterId}
+            onCancel={() => { setCreating(false); setInitialMasterId(""); }} onCreate={createTracking} />
+        ) : <NewTrackingForm ui={ui} samples={samples} customers={customers} customerName={customerName} materialLists={materialLists} settings={settings} existing={trackings} currentUser={currentUser}
           masterAvailable={masterAvailable} masterProducts={masterProducts} lsxOptionsFor={lsxOptionsFor} initialMasterId={initialMasterId}
           onCancel={() => { setCreating(false); setInitialMasterId(""); }} onCreate={createTracking} />
       )}
@@ -495,6 +511,178 @@ function TodayList({ ui, entries, customerName, onOpen }) {
 }
 
 /* ================= Create ================= */
+/* ================= v58.2: tick many Master Products → many test trackings ================= */
+const STEP_CHIP_EXCLUDE = ["LAP_RAP", "NHAN_VE", "DAN_DAY"];
+function NewBatchFromMasterForm({ ui, samples, customerName, materialLists, settings, existing, currentUser, masterProducts, lsxOptionsFor, initialMasterId = "", onCancel, onCreate }) {
+  const { Panel, Button, Field, Input, Select, Badge, COLORS } = ui;
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState([]); // [{ masterId, moKey, productDescription, weaveOn, na }]
+  const [common, setCommon] = useState({ owner: currentUser?.full_name || "", startDate: todayIso(), testDeadline: "", fixed: {} });
+  const [saving, setSaving] = useState(false);
+  const byId = useMemo(() => new Map(masterProducts.map((m) => [m.id, m])), [masterProducts]);
+  const tracked = useMemo(() => new Set(existing.filter((t) => t.status !== "Closed").map((t) => t.masterProductId).filter(Boolean)), [existing]);
+  const chipSteps = settings.steps.filter((x) => x.source === "input" && !STEP_CHIP_EXCLUDE.includes(x.code));
+  const fixedSteps = settings.steps.filter((x) => x.planType === "fixed");
+
+  const rowFor = (m) => {
+    const src = samples.find((x) => x.id === m.sourceSampleId);
+    const sug = src ? suggestFromProduct(src, materialLists) : { weaveOn: "", na: [] };
+    const opts = lsxOptionsFor(m);
+    const firstMass = opts.find((x) => x.type === "Đại trà") || opts[0];
+    return { masterId: m.id, moKey: firstMass?.key || "", productDescription: m.description || firstLine(m.name), weaveOn: sug.weaveOn || "", na: sug.na || [] };
+  };
+  const isPicked = (id) => picked.some((p) => p.masterId === id);
+  const toggle = (m) => setPicked((list) => (list.some((p) => p.masterId === m.id) ? list.filter((p) => p.masterId !== m.id) : [...list, rowFor(m)]));
+  const patch = (id, ch) => setPicked((list) => list.map((p) => (p.masterId === id ? { ...p, ...ch } : p)));
+  useEffect(() => { const m = initialMasterId && byId.get(initialMasterId); if (m && !isPicked(m.id)) setPicked((l) => [...l, rowFor(m)]); }, [initialMasterId]);
+
+  const q = search.trim().toLowerCase();
+  const options = masterProducts.filter((m) => m.status === "Active" && (!q || `${m.erpNo} ${m.description} ${m.name} ${customerName(m.customerId)}`.toLowerCase().includes(q)))
+    .sort((a, b) => String(a.erpNo).localeCompare(String(b.erpNo)));
+  const shown = options.slice(0, 200);
+  const pickAllShown = () => setPicked((list) => [...list, ...shown.filter((m) => !list.some((p) => p.masterId === m.id)).map(rowFor)]);
+
+  const submit = async () => {
+    if (!picked.length) { alert("Tích chọn ít nhất 1 sản phẩm."); return; }
+    if (!common.startDate) { alert("Nhập ngày bắt đầu."); return; }
+    const missing = picked.filter((p) => !lsxOptionsFor(byId.get(p.masterId)).some((x) => x.key === p.moKey));
+    if (missing.length) { alert("Chưa chọn LSX cho: " + missing.map((p) => byId.get(p.masterId)?.erpNo || p.masterId).join(", ")); return; }
+    const notMass = picked.filter((p) => lsxOptionsFor(byId.get(p.masterId)).find((x) => x.key === p.moKey)?.type !== "Đại trà");
+    if (notMass.length && !confirm(`${notMass.length} mã đang chọn LSX không phải "Đại trà". Vẫn tạo?`)) return;
+    const drafts = picked.map((p) => {
+      const m = byId.get(p.masterId);
+      const lsx = lsxOptionsFor(m).find((x) => x.key === p.moKey);
+      return { erpNo: (m.erpNo || "").trim(), productDescription: p.productDescription, customerId: m.customerId || "", imageUrl: m.imageUrl || "",
+        sampleId: m.sourceSampleId || "", masterProductId: m.id, moId: lsx.key, lsxNo: lsx.moNo,
+        owner: common.owner, startDate: common.startDate, testDeadline: common.testDeadline, weaveOn: p.weaveOn, na: p.na, fixed: common.fixed };
+    });
+    setSaving(true);
+    try { await onCreate(drafts); } finally { setSaving(false); }
+  };
+
+  const th = { textAlign: "left", padding: "7px 8px", fontSize: 11.5, color: COLORS.inkSoft, fontWeight: 700, borderBottom: `1px solid ${COLORS.line}`, whiteSpace: "nowrap" };
+  const td = { padding: "7px 8px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 12.5, verticalAlign: "top" };
+  return (
+    <Panel title="Mang hàng đi test — chọn nhiều sản phẩm" action={<Button small variant="ghost" onClick={onCancel}><X size={14} /> Huỷ</Button>}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>Tích chọn các mã trong <b>Master Products</b>; mỗi mã chọn <b>LSX đại trà</b> lấy hàng đi test. Người phụ trách, ngày bắt đầu, hạn đi test và ngày ấn định áp dụng chung (sửa riêng từng mã sau trong chi tiết).</div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: "1 1 320px" }}>
+              <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: COLORS.inkSoft }} />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Gõ mã ERP / mô tả / khách để lọc…" style={{ paddingLeft: 30 }} />
+            </div>
+            <Button small variant="subtle" onClick={pickAllShown} disabled={!q || !shown.length}>Chọn tất cả {q ? `(${shown.length})` : ""}</Button>
+            {picked.length > 0 && <Button small variant="ghost" onClick={() => setPicked([])}>Bỏ chọn hết</Button>}
+            <span style={{ fontSize: 12.5, color: COLORS.inkSoft }}>Đã chọn <b>{picked.length}</b> / {options.length} mã</span>
+          </div>
+          <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 10, maxHeight: 260, overflowY: "auto" }}>
+            {!masterProducts.length && <div style={{ padding: 12, fontSize: 12.5, color: COLORS.amber }}>Chưa có Master Product nào. Chuyển mẫu đã accept từ Sample sang Master trước.</div>}
+            {shown.map((m, i) => {
+              const on = isPicked(m.id);
+              const nLsx = lsxOptionsFor(m).length;
+              return (
+                <label key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 10px", borderTop: i ? `1px solid ${COLORS.line}` : "none", background: on ? "#EEF3FE" : "#FFFFFF", cursor: "pointer", fontSize: 13 }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(m)} />
+                  <ProductThumb image={m.imageUrl} ui={ui} size={30} />
+                  <span style={{ fontWeight: 700, minWidth: 190 }}>{m.erpNo || "(no ERP)"}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.description || firstLine(m.name)} · {customerName(m.customerId)}</span>
+                  {tracked.has(m.id) && <Badge tone="teal">Đang test</Badge>}
+                  {!nLsx && <Badge tone="amber">Chưa có LSX</Badge>}
+                </label>
+              );
+            })}
+            {options.length > shown.length && <div style={{ padding: "7px 10px", fontSize: 12, color: COLORS.inkSoft }}>+{options.length - shown.length} mã khác — gõ để lọc</div>}
+          </div>
+        </div>
+
+        {picked.length > 1 && (() => {
+          const all = new Map();
+          picked.forEach((p) => lsxOptionsFor(byId.get(p.masterId)).forEach((x) => { const c = all.get(x.key) || { ...x, n: 0 }; c.n++; all.set(x.key, c); }));
+          const list = [...all.values()].sort((a, b) => b.n - a.n);
+          return list.length ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
+              <span style={{ fontWeight: 600 }}>Áp dụng 1 LSX cho các mã đã chọn:</span>
+              <Select value="" onChange={(e) => { const k = e.target.value; if (!k) return; setPicked((rows) => rows.map((p) => (lsxOptionsFor(byId.get(p.masterId)).some((x) => x.key === k) ? { ...p, moKey: k } : p))); }} style={{ ...cellInput, maxWidth: 360 }}>
+                <option value="">— Chọn LSX —</option>
+                {list.map((x) => <option key={x.key} value={x.key}>{x.type} · {x.moNo} — có {x.n}/{picked.length} mã</option>)}
+              </Select>
+            </div>
+          ) : null;
+        })()}
+        {picked.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><th style={th}>#</th><th style={th}>Mã ERP</th><th style={th}>Product Description</th><th style={th}>LSX lấy hàng đi test *</th><th style={th}>Đan dây trên</th><th style={th}>Công đoạn (bỏ tick = N/A)</th><th style={th}></th></tr></thead>
+              <tbody>
+                {picked.map((p, i) => {
+                  const m = byId.get(p.masterId);
+                  const opts = lsxOptionsFor(m);
+                  const sel = opts.find((x) => x.key === p.moKey);
+                  return (
+                    <tr key={p.masterId}>
+                      <td style={td}>{i + 1}</td>
+                      <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>{m?.erpNo}{tracked.has(p.masterId) && <div><Badge tone="teal">đang có lượt test</Badge></div>}</td>
+                      <td style={{ ...td, minWidth: 200 }}><Input value={p.productDescription} onChange={(e) => patch(p.masterId, { productDescription: e.target.value })} style={cellInput} /></td>
+                      <td style={{ ...td, minWidth: 210 }}>
+                        <Select value={p.moKey} onChange={(e) => patch(p.masterId, { moKey: e.target.value })} style={{ ...cellInput, ...(!sel ? { borderColor: COLORS.amber } : {}) }}>
+                          <option value="">— Chọn LSX —</option>
+                          {opts.map((x) => <option key={x.key} value={x.key}>{x.type} · {x.moNo}{x.poReference ? ` · PO ${x.poReference}` : ""}</option>)}
+                        </Select>
+                        {!opts.length && <div style={{ fontSize: 11.5, color: COLORS.amber, marginTop: 3 }}>Mã chưa có trong LSX nào</div>}
+                        {sel && sel.type !== "Đại trà" && <div style={{ fontSize: 11.5, color: COLORS.amber, marginTop: 3 }}>Không phải LSX đại trà</div>}
+                      </td>
+                      <td style={{ ...td, minWidth: 130 }}>
+                        <Select value={p.weaveOn} onChange={(e) => patch(p.masterId, { weaveOn: e.target.value })} style={cellInput}>
+                          <option value="">— Chọn —</option>
+                          {WEAVE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </Select>
+                      </td>
+                      <td style={{ ...td, minWidth: 260 }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {chipSteps.map((x) => {
+                            const onStep = !p.na.includes(x.code);
+                            return (
+                              <button key={x.code} type="button" onClick={() => patch(p.masterId, { na: onStep ? [...p.na, x.code] : p.na.filter((c) => c !== x.code) })}
+                                style={{ border: `1px solid ${onStep ? COLORS.wood : COLORS.line}`, background: onStep ? "#EEF3FE" : "#FFFFFF", color: onStep ? COLORS.wood : COLORS.inkSoft, borderRadius: 999, padding: "2px 8px", fontSize: 11.5, cursor: "pointer", textDecoration: onStep ? "none" : "line-through" }}>{x.short}</button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td style={td}><button type="button" title="Bỏ" onClick={() => toggle(m)} style={{ border: "none", background: "none", color: COLORS.red, cursor: "pointer" }}><X size={14} /></button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
+          <Field label="Người phụ trách"><Input value={common.owner} onChange={(e) => setCommon({ ...common, owner: e.target.value })} /></Field>
+          <Field label="Ngày bắt đầu *"><Input type="date" value={common.startDate} onChange={(e) => setCommon({ ...common, startDate: e.target.value })} /></Field>
+          <Field label="Hạn mang đi test"><Input type="date" value={common.testDeadline} onChange={(e) => setCommon({ ...common, testDeadline: e.target.value })} /></Field>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.inkSoft, marginBottom: 6 }}>Ngày ấn định chung (bỏ qua với mã có bước đó = N/A; có thể để trống, nhập sau theo từng mã)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12 }}>
+            {fixedSteps.map((x) => (
+              <Field key={x.code} label={`${x.short}${x.place === "Thuê ngoài" ? " (thuê ngoài)" : ""}`}>
+                <Input type="date" value={common.fixed[x.code] || ""} onChange={(e) => setCommon({ ...common, fixed: { ...common.fixed, [x.code]: e.target.value } })} />
+              </Field>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button onClick={submit} disabled={saving || !picked.length}><Plus size={14} /> {saving ? "Đang tạo…" : `Tạo ${picked.length || ""} theo dõi`}</Button>
+          <Button variant="ghost" onClick={onCancel}>Huỷ</Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function NewTrackingForm({ ui, samples, customers, customerName, materialLists, settings, existing, currentUser, onCancel, onCreate, masterAvailable = false, masterProducts = [], lsxOptionsFor = () => [], initialMasterId = "" }) {
   const { Panel, Button, Field, Input, Select, TextArea, COLORS } = ui;
   // v58: when Master Products exist, a test sample is always taken from a Master Product + an LSX.

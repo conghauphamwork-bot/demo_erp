@@ -6160,6 +6160,56 @@ function testResultTone(r) {
   return { Pass: "green", Fail: "red", Conditional: "amber" }[r] || "neutral";
 }
 
+/* v58.2: type-to-search product picker (by ERP code / description / id) */
+function ErpSearchPicker({ options, value, onChange, inLine = () => false, limit = 12 }) {
+  const selected = options.find((o) => o.value === value) || null;
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const needle = q.trim().toLowerCase();
+  const hits = needle ? options.filter((o) => `${o.erp} ${o.title} ${o.sub}`.toLowerCase().includes(needle)) : [];
+  const shown = hits.slice(0, limit);
+  const pick = (o) => { onChange(o.value); setQ(""); setOpen(false); };
+  if (selected) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${COLORS.wood}`, background: "#EEF3FE", borderRadius: 10, padding: "8px 10px" }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selected.erp || "(chưa có mã ERP)"}</div>
+          <div style={{ fontSize: 12, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.title} · {selected.sub}</div>
+        </div>
+        {selected.group !== "Master" && selected.group !== "Product" && <Badge tone="amber">Cần ngoại lệ</Badge>}
+        <button type="button" title="Chọn lại" onClick={() => onChange("")} style={{ border: "none", background: "transparent", cursor: "pointer", color: COLORS.inkSoft }}><X size={15} /></button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "relative" }}>
+      <Input autoFocus value={q} placeholder="Gõ mã ERP (VD: 10DGCH0030) hoặc mô tả…" onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (shown.length) pick(shown[0]); } if (e.key === "Escape") setOpen(false); }} />
+      {open && needle && (
+        <div style={{ position: "absolute", zIndex: 50, top: "calc(100% + 4px)", left: 0, right: 0, background: "#FFFFFF", border: `1px solid ${COLORS.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(15,23,42,.12)", maxHeight: 320, overflowY: "auto" }}>
+          {!shown.length && <div style={{ padding: "10px 12px", fontSize: 13, color: COLORS.inkSoft }}>Không tìm thấy mã nào khớp “{q}”.</div>}
+          {shown.map((o, i) => {
+            const dup = inLine(o.value);
+            return (
+              <button key={o.value} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
+                style={{ display: "flex", width: "100%", textAlign: "left", gap: 10, alignItems: "center", padding: "8px 12px", border: "none", borderTop: i ? `1px solid ${COLORS.line}` : "none", background: i === 0 ? "#F6F8FB" : "#FFFFFF", cursor: "pointer" }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.erp || "(chưa có mã ERP)"}</div>
+                  <div style={{ fontSize: 12, color: COLORS.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.title} · {o.sub}</div>
+                </div>
+                {dup && <Badge tone="teal">Đã có trong LSX</Badge>}
+                {o.group !== "Master" && o.group !== "Product" && <Badge tone="amber">Ngoại lệ</Badge>}
+              </button>
+            );
+          })}
+          {hits.length > limit && <div style={{ padding: "7px 12px", fontSize: 12, color: COLORS.inkSoft, borderTop: `1px solid ${COLORS.line}` }}>+{hits.length - limit} mã khác — gõ thêm để thu hẹp</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ManufacturingOrdersView({
   manufacturingOrders, saveManufacturingOrders,
   moProductLines, saveMoProductLines,
@@ -6207,6 +6257,15 @@ function ManufacturingOrdersView({
     return m ? `${m.erpNo || m.id} — ${m.description || String(m.name || "").split("\n")[0]}` : productName(l.productId);
   };
   const linesForMo = (moId) => moProductLines.filter((l) => l.moId === moId);
+  // v58.2: options for the "type ERP code" picker (Master Products first, then Samples not yet accepted)
+  const lineOptions = useMemo(() => {
+    const first = (t) => String(t || "").split("\n")[0];
+    const masters = masterList.filter((m) => m.status === "Active").map((m) => ({ value: "mp:" + m.id, erp: m.erpNo || "", title: m.description || first(m.name), sub: customerName(m.customerId), group: "Master" }));
+    const pending = samples
+      .filter((x) => !useMaster || !masterList.some((m) => m.sourceSampleId === x.id || (m.erpNo && m.erpNo === String(x.erpNo || "").trim())))
+      .map((x) => ({ value: "s:" + x.id, erp: x.erpNo || "", title: first(x.name), sub: `${x.id} · ${x.customerApprovalStatus || "Pending"}`, group: useMaster ? "Sample chưa accept — cần phê duyệt ngoại lệ" : "Product" }));
+    return [...masters, ...pending].sort((a, b) => (a.group === b.group ? String(a.erp).localeCompare(String(b.erp)) : a.group === "Master" ? -1 : 1));
+  }, [masterList, samples, useMaster, customerName]);
   const lotsForLine = (lineId) => productionLots.filter((l) => l.moProductLineId === lineId);
   const testsForMo = (moId) => massProductionTestSamples.filter((t) => t.moId === moId);
 
@@ -6490,20 +6549,13 @@ function ManufacturingOrdersView({
             {showAddLine && (
               <div style={{ border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
-                  <Field label={useMaster ? "Sản phẩm (Master Products)" : "Product"}>
-                    <Select value={newLineProductId} onChange={(e) => setNewLineProductId(e.target.value)}>
-                      <option value="">{useMaster ? "— Chọn Master Product —" : "— Chọn Product —"}</option>
-                      {useMaster ? (
-                        <>
-                          <optgroup label="Master Products (khách đã accept)">
-                            {masterList.filter((m) => m.status === "Active").sort((a, b) => String(a.erpNo).localeCompare(String(b.erpNo))).map((m) => <option key={m.id} value={"mp:" + m.id}>{m.erpNo || m.id} — {m.description || String(m.name || "").split("\n")[0]} · {customerName(m.customerId)}</option>)}
-                          </optgroup>
-                          <optgroup label="Sample chưa accept (cần phê duyệt ngoại lệ)">
-                            {samples.filter((s) => !masterList.some((m) => m.sourceSampleId === s.id || (m.erpNo && m.erpNo === String(s.erpNo || "").trim()))).map((s) => <option key={s.id} value={"s:" + s.id}>{s.id} — {String(s.name || "").split("\n")[0]} ({s.customerApprovalStatus || "Pending"})</option>)}
-                          </optgroup>
-                        </>
-                      ) : samples.map((s) => <option key={s.id} value={"s:" + s.id}>{s.id} — {s.name} ({s.customerApprovalStatus || "Pending"})</option>)}
-                    </Select>
+                  <Field label={useMaster ? "Sản phẩm — gõ mã ERP để tìm (Master Products)" : "Sản phẩm — gõ mã ERP để tìm"}>
+                    <ErpSearchPicker
+                      options={lineOptions}
+                      value={newLineProductId}
+                      onChange={setNewLineProductId}
+                      inLine={(v) => linesForMo(openMo.id).some((l) => (v.startsWith("mp:") ? l.masterProductId === v.slice(3) : l.productId === v.slice(2)))}
+                    />
                   </Field>
                   <Field label="Qty"><Input type="number" value={newLineQty} onChange={(e) => setNewLineQty(e.target.value)} /></Field>
                 </div>
