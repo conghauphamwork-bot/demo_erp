@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
 import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical } from "lucide-react";
+import SampleTestTrackingView from "./SampleTestTrackingView.jsx";
 import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
@@ -956,11 +957,11 @@ function levelCan(level, module, action = "view") {
   }
 
   if (l === 2) {
-    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai"].includes(module)) return false;
+    if (!["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests"].includes(module)) return false;
     if (["delete", "import"].includes(action)) return false;
     return true;
   }
-  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai"].includes(module);
+  return action === "view" && ["dashboard", "customers", "products", "samples", "materials", "tasks", "calendar", "ai", "sampleTests"].includes(module);
 }
 
   const [loaded, setLoaded] = useState(false);
@@ -1159,7 +1160,7 @@ function levelCan(level, module, action = "view") {
   useEffect(() => {
     const allowedForLevel = Number(currentUser?.level ?? 3) === 1
       ? ["samples", "tasks", "calendar"]
-      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders"];
+      : ["dashboard", "customers", "quotes", "orders", "samples", "tasks", "calendar", "materials", "shipping", "manufacturingOrders", "sampleTests"];
     if (!allowedForLevel.includes(view)) {
       setView(allowedForLevel[0] || "samples");
     }
@@ -1203,6 +1204,7 @@ function levelCan(level, module, action = "view") {
     { key: "materials", label: "Materials", icon: Palette, module: "materials" },
     { key: "shipping", label: "Shipping", icon: Truck, module: "shipping" },
     { key: "manufacturingOrders", label: "Manufacturing Orders", icon: Factory, module: "manufacturingOrders" },
+    { key: "sampleTests", label: "Theo dõi mẫu test", icon: FlaskConical, module: "sampleTests" },
   ].filter(n => levelCan(currentUser?.level, n.module, "view"));
 
   return (
@@ -1444,7 +1446,7 @@ function levelCan(level, module, action = "view") {
           const groups = [
             ["GENERAL", NAV.filter(n => ["samples","tasks","calendar"].includes(n.module))],
             ["SALES", NAV.filter(n => ["dashboard","customers","quotes","orders"].includes(n.module))],
-            ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping","manufacturingOrders"].includes(n.module))],
+            ["SUPPLY CHAIN", NAV.filter(n => ["materials","shipping","manufacturingOrders","sampleTests"].includes(n.module))],
             ["TOOLS", levelCan(currentUser?.level, "backup", "export") ? [{ key: "backup", label: "Export Data", icon: Download, onClick: handleExportBackup }] : []],
           ];
           return groups.map(([group, items]) => items.length ? <div key={group} style={{ marginTop: 18 }}>
@@ -1512,6 +1514,19 @@ function levelCan(level, module, action = "view") {
         )}
         {view === "shipping" && levelCan(currentUser?.level, "shipping") && (
           <ShippingView shipments={shipments} saveShipments={setAndSave.shipments} orders={orders} customerName={customerName} customers={customers} />
+        )}
+        {view === "sampleTests" && levelCan(currentUser?.level, "sampleTests") && (
+          <SampleTestTrackingView
+            samples={samples}
+            customers={customers}
+            customerName={customerName}
+            materialLists={materialLists}
+            currentUser={currentUser}
+            canEdit={levelCan(currentUser?.level, "sampleTests", "edit")}
+            canDelete={levelCan(currentUser?.level, "sampleTests", "delete")}
+            canSettings={Number(currentUser?.level ?? 3) === 0}
+            ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }}
+          />
         )}
         {view === "manufacturingOrders" && levelCan(currentUser?.level, "manufacturingOrders") && (
           <ManufacturingOrdersView
