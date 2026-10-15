@@ -145,7 +145,9 @@ export function diffImport(rows, entries, settings) {
     const push = (field, label, from, to) => out.changes.push({ trackingId: id, erp, row: r.rowNumber, field, label, from, to });
     const tp = {}, sp = {};
 
-    for (const [letter, col] of Object.entries(colByLetter)) {
+    // "Thực tế" columns first, so a step switched from N/A to a date in this file also takes its Ấn định / Hẹn lại
+    const ordered = Object.entries(colByLetter).sort((a, b) => (a[1].edit === "actual" ? 0 : 1) - (b[1].edit === "actual" ? 0 : 1));
+    for (const [letter, col] of ordered) {
       if (!col.edit) continue;
       const raw = cells[letter];
       if (col.edit === "tracking") {
@@ -172,8 +174,10 @@ export function diffImport(rows, entries, settings) {
       const p = parseCellDate(raw);
       if (p.kind === "invalid") { out.errors.push({ row: r.rowNumber, erp, message: `${col.header}: "${raw}" không phải ngày (dd/mm/yyyy) hoặc N/A.` }); continue; }
       const stepLabel = col.header;
-      const curNa = Boolean(s.row.notApplicable) || (s.code === "DAN_DAY" && t.weaveOn === "none");
       const patch = (sp[s.code] ||= {});
+      const wasNa = Boolean(s.row.notApplicable) || (s.code === "DAN_DAY" && t.weaveOn === "none");
+      // for Ấn định / Hẹn lại use the N/A state after this row's "Thực tế" change
+      const curNa = col.edit === "actual" ? wasNa : (patch.notApplicable !== undefined ? patch.notApplicable : wasNa);
       if (col.edit === "actual") {
         const cur = curNa ? NA_TEXT : (s.hasParts ? (s.actual || "") : (s.row.actualDate || ""));
         const next = p.kind === "na" ? NA_TEXT : p.value;

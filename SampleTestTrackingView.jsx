@@ -6,7 +6,7 @@
    file does not import from tanhoa_erp.jsx (no circular import).
 ------------------------------------------------------------------- */
 import React, { useEffect, useMemo, useState } from "react";
-import { FlaskConical, Plus, X, Search, ArrowLeft, Lock, Trash2, CalendarClock, Settings, ListChecks, Image as ImageIcon, RefreshCw, Download, Upload } from "lucide-react";
+import { FlaskConical, Plus, X, Search, ArrowLeft, Lock, Trash2, CalendarClock, Settings, ListChecks, Image as ImageIcon, RefreshCw, Download, Upload, Table2, Undo2 } from "lucide-react";
 import {
   computeTracking, FILTERS, todayItems, suggestFromProduct, WEAVE_OPTIONS, IQC_RESULTS, TEST_TYPES, TEST_RESULTS,
   PLACES, todayIso, mergeSettings,
@@ -20,6 +20,7 @@ import { loadQc, saveQc, deleteQc } from "./qcApi";
 import { qcFieldsFromTest, qcIdForTest, mergeQcSettings } from "./qcLogic";
 import { lsxForMaster } from "./masterApi";
 import { buildExportTable, diffImport } from "./sampleTestExcel.js";
+import { planBulk, BULK_FIELDS, NA as BULK_NA } from "./sampleTestBulk.js";
 
 const PART_STEPS = ["KHUNG_SAT", "HW", "NEM"];
 const PART_SUGGESTIONS = {
@@ -311,6 +312,18 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
     return true;
   };
 
+  /* ---------- v58.7: bulk update (rows already computed by planBulk) ---------- */
+  const saveBulkRows = async (rows) => {
+    try {
+      for (let i = 0; i < rows.length; i += 200) await saveStepRows(rows.slice(i, i + 200));
+    } catch (e) {
+      alert("Ghi hàng loạt thất bại: " + (e?.message || e) + saveErrorHint(e) + "\nDữ liệu sẽ được tải lại.");
+      reload(); return false;
+    }
+    setStepRows((all) => { const m = new Map(all.map((r) => [r.id, r])); rows.forEach((r) => m.set(r.id, r)); return [...m.values()]; });
+    return true;
+  };
+
   const persistSettings = (next) => {
     setSettings(next);
     run(saveTestSettings(next), "Lưu thiết lập");
@@ -355,6 +368,7 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
   const tabs = [
     { key: "list", label: "Danh sách", icon: ListChecks },
     { key: "today", label: "Việc hôm nay", icon: CalendarClock },
+    ...(canEdit ? [{ key: "bulk", label: "Cập nhật theo lô", icon: Table2 }] : []),
     ...(canSettings ? [{ key: "settings", label: "Thiết lập", icon: Settings }] : []),
   ];
 
@@ -403,6 +417,7 @@ export default function SampleTestTrackingView({ samples = [], customers = [], c
         <TrackingList ui={ui} entries={entries} customers={customers} customerName={customerName} filter={filter} setFilter={setFilter}
           query={query} setQuery={setQuery} customerFilter={customerFilter} setCustomerFilter={setCustomerFilter} onOpen={setOpenId} />
       )}
+      {!open && !creating && tab === "bulk" && canEdit && <BulkUpdatePanel ui={ui} entries={entries} settings={settings} customerName={customerName} onSaveRows={saveBulkRows} onOpen={setOpenId} />}
       {!open && !creating && tab === "today" && <TodayList ui={ui} entries={entries} customerName={customerName} onOpen={setOpenId} />}
       {!open && !creating && tab === "settings" && canSettings && <SettingsPanel ui={ui} settings={settings} onSave={persistSettings} />}
     </div>
@@ -555,6 +570,150 @@ function TodayList({ ui, entries, customerName, onOpen }) {
 }
 
 /* ================= Create ================= */
+/* ================= v58.7: bulk update by batch (LSX) ================= */
+const shortDate = (d) => { if (!d) return ""; const [, m, day] = String(d).split("-"); return `${day}/${m}`; };
+function BulkUpdatePanel({ ui, entries, settings, customerName, onSaveRows, onOpen }) {
+  const { Panel, Button, Input, Select, Badge, COLORS } = ui;
+  const [lsx, setLsx] = useState("");
+  const [query, setQuery] = useState("");
+  const [sel, setSel] = useState(() => new Set());
+  const [step, setStep] = useState("NHAM");
+  const [field, setField] = useState("actual");
+  const [date, setDate] = useState(todayIso());
+  const [overwrite, setOverwrite] = useState(false);
+  const [onlyPending, setOnlyPending] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState(null); // { label, rows, prev, skipped }
+  const steps = settings.steps;
+  const stepDef = steps.find((x) => x.code === step);
+  const active = entries.filter((e) => e.tracking.status !== "Closed");
+  const lsxCounts = useMemo(() => { const m = new Map(); active.forEach((e) => { const k = e.tracking.lsxNo || "(chưa có LSX)"; m.set(k, (m.get(k) || 0) + 1); }); return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])); }, [entries]);
+  const q = query.trim().toLowerCase();
+  const pending = (e) => { const s = e.computed.byCode[step]; return s && !s.na && !s.actual; };
+  const rows = active
+    .filter((e) => !lsx || (e.tracking.lsxNo || "(chưa có LSX)") === lsx)
+    .filter((e) => !q || `${e.info.erpNo} ${e.info.description} ${e.tracking.lsxNo}`.toLowerCase().includes(q))
+    .filter((e) => !onlyPending || pending(e))
+    .sort((a, b) => String(a.tracking.lsxNo || "").localeCompare(String(b.tracking.lsxNo || "")) || String(a.info.erpNo).localeCompare(String(b.info.erpNo)));
+  const shownIds = rows.map((e) => e.id);
+  const selShown = shownIds.filter((id) => sel.has(id));
+  const allShown = shownIds.length > 0 && selShown.length === shownIds.length;
+  const toggle = (id) => setSel((s0) => { const s1 = new Set(s0); s1.has(id) ? s1.delete(id) : s1.add(id); return s1; });
+  const toggleAll = () => setSel((s0) => { const s1 = new Set(s0); if (allShown) shownIds.forEach((id) => s1.delete(id)); else shownIds.forEach((id) => s1.add(id)); return s1; });
+  const fieldOk = field !== "plan" || stepDef?.planType === "fixed";
+
+  const run = async (value, label) => {
+    const ids = [...sel];
+    if (!ids.length) { alert("Tích chọn ít nhất 1 mã."); return; }
+    const plan = planBulk(entries, ids, { stepCode: step, field, value, overwrite });
+    if (!plan.rows.length) { setLast({ label, rows: [], prev: [], skipped: plan.skipped, unchanged: plan.unchanged }); return; }
+    if (!confirm(`${label}\n\nGhi cho ${plan.rows.length} mã${plan.skipped.length ? `, bỏ qua ${plan.skipped.length} mã` : ""}${plan.unchanged ? `, ${plan.unchanged} mã không đổi` : ""}. Tiếp tục?`)) return;
+    setBusy(true);
+    const ok = await onSaveRows(plan.rows);
+    setBusy(false);
+    if (ok) setLast({ label, ...plan });
+  };
+  const undo = async () => {
+    if (!last?.prev?.length) return;
+    setBusy(true);
+    const ok = await onSaveRows(last.prev);
+    setBusy(false);
+    if (ok) setLast({ label: `Đã hoàn tác: ${last.label}`, rows: [], prev: [], skipped: [], undone: true });
+  };
+  const stepName = stepDef?.short || step;
+  const fieldName = BULK_FIELDS.find((f) => f.key === field)?.label || field;
+
+  const th = { textAlign: "left", padding: "6px 6px", fontSize: 11, color: COLORS.inkSoft, fontWeight: 700, borderBottom: `1px solid ${COLORS.line}`, position: "sticky", top: 0, background: "#FFFFFF", zIndex: 1, whiteSpace: "nowrap" };
+  const td = { padding: "5px 6px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 12, whiteSpace: "nowrap" };
+  const cell = (e, s) => {
+    if (!s) return "";
+    if (s.na) return <span style={{ color: "#B0B7C3" }}>N/A</span>;
+    if (s.actual) return <span style={{ color: COLORS.green, fontWeight: 700 }}>✓ {shortDate(s.actual)}</span>;
+    const late = s.status === "Trễ";
+    return <span style={{ color: late ? COLORS.red : COLORS.inkSoft }} title={`Dự kiến${s.hasParts ? " (theo chi tiết vật tư)" : ""}`}>{s.forecast ? shortDate(s.forecast) : "—"}{s.hasParts ? "*" : ""}</span>;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <Panel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Select value={lsx} onChange={(e) => { setLsx(e.target.value); }} style={{ maxWidth: 300, ...(lsx ? { borderColor: COLORS.wood } : {}) }}>
+              <option value="">Lọc theo LSX: tất cả ({active.length} mã)</option>
+              {lsxCounts.map(([k, n]) => <option key={k} value={k}>{k} ({n} mã)</option>)}
+            </Select>
+            <div style={{ position: "relative", flex: "1 1 240px" }}>
+              <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: COLORS.inkSoft }} />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã ERP / mô tả / LSX…" style={{ paddingLeft: 30 }} />
+            </div>
+            <label style={{ fontSize: 12.5, display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} /> Chỉ mã chưa xong bước <b>{stepName}</b></label>
+            <Button small variant="subtle" onClick={toggleAll} disabled={!shownIds.length}>{allShown ? "Bỏ chọn" : "Chọn tất cả"} ({shownIds.length})</Button>
+            {sel.size > 0 && <Button small variant="ghost" onClick={() => setSel(new Set())}>Bỏ chọn hết</Button>}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", background: "#F6F8FB", border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: "10px 12px" }}>
+            <b style={{ fontSize: 13 }}>Đã chọn {sel.size} mã →</b>
+            <Select value={step} onChange={(e) => setStep(e.target.value)} style={{ width: 170, padding: "6px 8px" }}>
+              {steps.filter((x) => x.source === "input").map((x, i) => <option key={x.code} value={x.code}>{steps.indexOf(x) + 1}. {x.short}</option>)}
+            </Select>
+            <Select value={field} onChange={(e) => setField(e.target.value)} style={{ width: 160, padding: "6px 8px" }}>
+              {BULK_FIELDS.map((f) => <option key={f.key} value={f.key} disabled={f.key === "plan" && stepDef?.planType !== "fixed"}>{f.label}{f.key === "plan" && stepDef?.planType !== "fixed" ? " (chỉ bước ấn định)" : ""}</option>)}
+            </Select>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 150, padding: "6px 8px" }} />
+            <Button small onClick={() => run(date, `${stepName} · ${fieldName} = ${shortDate(date)}`)} disabled={busy || !sel.size || !date || !fieldOk}>Ghi ngày cho {sel.size} mã</Button>
+            {field === "actual" && <Button small variant="subtle" onClick={() => { setDate(todayIso()); run(todayIso(), `${stepName} · Xong hôm nay (${shortDate(todayIso())})`); }} disabled={busy || !sel.size}>Xong hôm nay</Button>}
+            {field === "actual" && step !== "LAP_RAP" && <Button small variant="subtle" onClick={() => run(BULK_NA, `${stepName} · N/A`)} disabled={busy || !sel.size}>Đánh N/A</Button>}
+            <Button small variant="ghost" onClick={() => run("", `${stepName} · Xoá ${fieldName}`)} disabled={busy || !sel.size || !fieldOk}>Xoá ngày</Button>
+            <label style={{ fontSize: 12, display: "inline-flex", gap: 5, alignItems: "center", color: overwrite ? COLORS.red : COLORS.inkSoft }}><input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> Ghi đè ô đã có ngày / N/A</label>
+          </div>
+
+          {last && (
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap", background: last.undone ? "#F1F5F9" : "#ECFDF5", border: `1px solid ${last.undone ? COLORS.line : "#A7F3D0"}`, borderRadius: 10, padding: "8px 12px", fontSize: 12.5 }}>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <b>{last.label}</b>{!last.undone && <> — đã ghi <b>{last.rows.length}</b> mã{last.unchanged ? `, ${last.unchanged} không đổi` : ""}</>}
+                {last.skipped?.length > 0 && (
+                  <details style={{ marginTop: 4 }}><summary style={{ cursor: "pointer", color: "#92400E" }}>Bỏ qua {last.skipped.length} mã (bấm để xem lý do)</summary>
+                    <div style={{ maxHeight: 140, overflowY: "auto" }}>{last.skipped.map((x) => <div key={x.id}>{x.erp}: {x.reason}</div>)}</div>
+                  </details>
+                )}
+              </div>
+              {!last.undone && last.prev?.length > 0 && <Button small variant="danger" onClick={undo} disabled={busy}><Undo2 size={13} /> Hoàn tác</Button>}
+              <button type="button" onClick={() => setLast(null)} style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.inkSoft }}><X size={14} /></button>
+            </div>
+          )}
+        </div>
+      </Panel>
+
+      <Panel>
+        <div style={{ overflow: "auto", maxHeight: "65vh" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <th style={th}><input type="checkbox" checked={allShown} onChange={toggleAll} /></th>
+              <th style={th}>Mã ERP</th><th style={th}>LSX</th>
+              {steps.map((x, i) => (
+                <th key={x.code} style={{ ...th, cursor: x.source === "input" ? "pointer" : "default", color: x.code === step ? COLORS.wood : th.color, background: x.code === step ? "#EEF3FE" : "#FFFFFF" }}
+                  title={x.source === "input" ? "Bấm để chọn bước này" : "Lấy từ nhật ký test"} onClick={() => x.source === "input" && setStep(x.code)}>{i + 1}. {x.short}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {!rows.length && <tr><td style={td} colSpan={steps.length + 3}>Không có mã nào khớp bộ lọc.</td></tr>}
+              {rows.map((e) => (
+                <tr key={e.id} style={{ background: sel.has(e.id) ? "#EEF3FE" : "transparent" }}>
+                  <td style={td}><input type="checkbox" checked={sel.has(e.id)} onChange={() => toggle(e.id)} /></td>
+                  <td style={{ ...td, fontWeight: 700 }}><button type="button" onClick={() => onOpen(e.id)} title={e.info.description} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontWeight: 700, color: COLORS.ink }}>{e.info.erpNo || e.id}</button></td>
+                  <td style={{ ...td, color: COLORS.inkSoft }}>{e.tracking.lsxNo}</td>
+                  {steps.map((x) => <td key={x.code} style={{ ...td, background: x.code === step ? "#F6F8FB" : undefined }}>{cell(e, e.computed.byCode[x.code])}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11.5, color: COLORS.inkSoft }}>✓ = đã xong (ngày thực tế) · ngày xám = dự kiến · đỏ = trễ · * = theo chi tiết vật tư (cập nhật trong chi tiết mẫu) · bấm tiêu đề cột để chọn bước · bấm mã ERP để mở chi tiết.</div>
+      </Panel>
+    </div>
+  );
+}
+
 /* ================= v58.4: Excel import with preview ================= */
 function ExcelImportModal({ ui, excel, entries, settings, onApply, onClose }) {
   const { Button, Badge, COLORS } = ui;

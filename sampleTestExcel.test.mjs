@@ -68,4 +68,18 @@ assert.equal(parseCellDate("2026-1-5").value, "2026-01-05");
 assert.equal(parseCellDate("abc").kind, "invalid");
 assert.equal(allColumns(settings).filter((c) => c.edit).length, 4 + 11 + 4 + 4, "editable columns");
 
-console.log("sampleTestExcel: 4 scenarios passed");
+// 5. step currently N/A → date in "Thực tế" + "Ấn định" in the same file: both applied
+{
+  const t5 = { id: "t5", erpNo: "ERP-5", lsxNo: "L", owner: "", startDate: "2026-10-01", testDeadline: "", weaveOn: "wood", status: "Active" };
+  const e5 = [mk(t5, [{ id: "t5:KHUNG_SAT", trackingId: "t5", stepCode: "KHUNG_SAT", planDate: "", actualDate: "", notApplicable: true, rescheduleDate: "" }])];
+  const ex = buildExportTable(e5, settings);
+  const rr = ex.rows.map((x) => [...x]);
+  const ci = (h) => ex.headers.indexOf(h);
+  rr[0][ci("Khung sắt · Thực tế")] = "10/10/2026";
+  rr[0][ci("Khung sắt · Ấn định")] = "08/10/2026";
+  rr[0][ci("Khung sắt · Hẹn lại")] = "09/10/2026";
+  const d5 = diffImport(toSheet(ex.headers, rr), e5, settings);
+  assert.deepEqual(d5.stepPatches.t5.KHUNG_SAT, { notApplicable: false, actualDate: "2026-10-10", planDate: "2026-10-08", rescheduleDate: "2026-10-09" });
+}
+
+console.log("sampleTestExcel: 5 scenarios passed");
