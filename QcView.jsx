@@ -7,9 +7,11 @@
    - QcProductSection: khối QA/QC trong chi tiết sản phẩm (mẫu ship)
 ------------------------------------------------------------------- */
 import React, { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, Plus, X, Search, RefreshCw, Settings, ListChecks } from "lucide-react";
+import { ShieldCheck, Plus, X, Search, RefreshCw, Settings, ListChecks, Download, Upload } from "lucide-react";
 import PhotoProof from "./PhotoProof.jsx";
-import { loadQc, saveQc, deleteQc, saveQcSettings } from "./qcApi";
+import { RowHistoryButton } from "./RowHistory.jsx";
+import { loadQc, saveQc, saveQcMany, deleteQc, saveQcSettings } from "./qcApi";
+import { buildQcExport, diffQcImport } from "./qcExcel.js";
 import { QC_SOURCES, QC_RESULTS, QC_STATUSES, QC_FILTERS, qcSummary, qcOverdueDays, isQcOpen, mergeQcSettings } from "./qcLogic";
 import { todayIso } from "./sampleTestLogic";
 import { loadTestTracking } from "./sampleTestApi";
@@ -180,7 +182,7 @@ export function QcForm({ ui, draft, settings, canEdit = true, onCancel, onSave, 
 function QcTable({ ui, rows, customerName, onOpen, showProduct = true }) {
   const { Badge, COLORS } = ui;
   if (!rows.length) return <div style={{ padding: "24px 0", textAlign: "center", color: COLORS.inkSoft, fontSize: 13.5 }}>Chưa có phiếu nào.</div>;
-  const heads = ["Ngày", ...(showProduct ? ["Mã ERP · Sản phẩm"] : []), "Nguồn · Công đoạn", "Kết quả", "Phân loại · Mô tả lỗi", "Nguyên nhân → Hướng xử lý", "Hạn / Hoàn thành", "Ảnh"];
+  const heads = ["Ngày", ...(showProduct ? ["Mã ERP · Sản phẩm"] : []), "Nguồn · Công đoạn", "Kết quả", "Phân loại · Mô tả lỗi", "Nguyên nhân → Hướng xử lý", "Hạn / Hoàn thành", "Ảnh", ""];
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -197,6 +199,7 @@ function QcTable({ ui, rows, customerName, onOpen, showProduct = true }) {
               <td style={{ padding: "7px 9px", maxWidth: 260, color: COLORS.inkSoft }}>{r.rootCause}{r.correctiveAction ? <div style={{ color: COLORS.ink }}>→ {r.correctiveAction}</div> : null}</td>
               <td style={{ padding: "7px 9px", whiteSpace: "nowrap", fontSize: 12 }}>{r.dueDate ? <div>Hạn {fmt(r.dueDate)}</div> : null}{r.completedDate ? <div style={{ color: COLORS.green }}>Xong {fmt(r.completedDate)}</div> : null}</td>
               <td style={{ padding: "7px 9px" }}>{(r.photos?.length || 0) + (r.fixPhotos?.length || 0) ? <img src={(r.photos?.[0] || r.fixPhotos?.[0])} alt="" style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6 }} /> : ""}</td>
+              <td style={{ padding: "7px 9px" }}><RowHistoryButton table="qc_records" rowId={r.id} title={`${r.erpNo || ""} · ${r.stageLabel || r.source}`} /></td>
             </tr>
           ))}
         </tbody>
@@ -206,7 +209,7 @@ function QcTable({ ui, rows, customerName, onOpen, showProduct = true }) {
 }
 
 /* ================= Module ================= */
-export default function QcView({ ui, samples = [], customers = [], customerName, currentUser, canEdit = true, canDelete = true, canSettings = true, sampleStages = [] }) {
+export default function QcView({ ui, samples = [], masterProducts = [], customers = [], customerName, currentUser, canEdit = true, canDelete = true, canSettings = true, sampleStages = [], excel = null }) {
   const { Panel, Button, Badge, Input, Select, COLORS, FONT_HEAD } = ui;
   const [state, setState] = useState({ loading: true, available: true, error: "" });
   const [records, setRecords] = useState([]);
@@ -218,6 +221,7 @@ export default function QcView({ ui, samples = [], customers = [], customerName,
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [testTrackingOptions, setTestTrackingOptions] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const reload = async () => {
     setState((s) => ({ ...s, loading: true }));
@@ -251,6 +255,21 @@ export default function QcView({ ui, samples = [], customers = [], customerName,
     setEditing(null);
   };
 
+  /* v59: Excel export (current filter; empty list → blank template) and import with preview */
+  const exportExcel = async (list) => {
+    const { headers, rows: data } = buildQcExport(list);
+    try { await excel.download(`QAQC_${todayIso().replace(/-/g, "")}.xlsx`, headers, data); }
+    catch (e) { alert("Xuất Excel thất bại: " + (e?.message || e)); }
+  };
+  const applyImport = async (d) => {
+    try {
+      if (d.creates.length) await saveQcMany(d.creates.map((r) => ({ ...r, createdAt: undefined })));
+      for (const u of d.updates) await saveQc({ id: u.id, ...u.patch });
+    } catch (e) { alert("Ghi dữ liệu QA/QC bị lỗi giữa chừng: " + (e?.message || e) + "\nDữ liệu sẽ được tải lại."); reload(); return false; }
+    setRecords((l) => [...l.map((r) => { const u = d.updates.find((x) => x.id === r.id); return u ? { ...r, ...u.patch } : r; }), ...d.creates]);
+    return true;
+  };
+
   const q = query.trim().toLowerCase();
   const base = records.filter((r) => (!source || r.source === source) && (!category || (r.defectCategory || "(chưa phân loại)") === category)
     && (!q || [r.erpNo, r.productName, r.stageLabel, r.defectDescription, r.ncrNo, r.responsible, customerName(r.customerId)].join(" ").toLowerCase().includes(q)));
@@ -270,6 +289,8 @@ export default function QcView({ ui, samples = [], customers = [], customerName,
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <Button variant="ghost" small onClick={reload}><RefreshCw size={14} /> Tải lại</Button>
+        {excel && state.available && <Button variant="subtle" small onClick={() => exportExcel(rows)} title="Xuất các phiếu đang lọc — cũng dùng làm file mẫu để nhập"><Download size={14} /> Xuất Excel</Button>}
+        {excel && state.available && canEdit && <Button variant="subtle" small onClick={() => setImporting(true)}><Upload size={14} /> Nhập Excel</Button>}
         {canEdit && state.available && <Button onClick={() => setEditing(blankQc({ inspector: currentUser?.full_name || "" }))}><Plus size={15} /> Ghi phiếu QC</Button>}
       </div>
     </div>
@@ -294,6 +315,7 @@ export default function QcView({ ui, samples = [], customers = [], customerName,
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {header}
+      {importing && <QcImportModal ui={ui} excel={excel} ctx={{ records, samples, masterProducts, settings }} onApply={applyImport} onTemplate={() => exportExcel([])} onClose={() => setImporting(false)} />}
       {state.error && <div style={{ background: COLORS.redSoft, color: COLORS.red, padding: "10px 14px", borderRadius: 10, fontSize: 13 }}>{state.error}</div>}
       {editing ? (
         <QcForm ui={ui} draft={editing} settings={settings} canEdit={canEdit} customerName={customerName} onCancel={() => setEditing(null)} onSave={save} onDelete={canDelete ? remove : null}
@@ -430,6 +452,94 @@ export function QcProductSection({ ui, sample, customerName, currentUser, canEdi
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ================= v59: Excel import with preview ================= */
+function QcImportModal({ ui, excel, ctx, onApply, onTemplate, onClose }) {
+  const { Button, Badge, COLORS } = ui;
+  const [stage, setStage] = useState("pick");
+  const [diff, setDiff] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [err, setErr] = useState("");
+  const choose = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    setFileName(f.name); setErr(""); setStage("parsing");
+    try { const parsed = await excel.parse(f); setDiff(diffQcImport(parsed.rows || [], ctx)); setStage("preview"); }
+    catch (x) { setErr(x?.message || String(x)); setStage("pick"); }
+  };
+  const apply = async () => { setStage("saving"); const ok = await onApply(diff); setStage(ok ? "done" : "preview"); };
+  const th = { textAlign: "left", padding: "6px 8px", fontSize: 11.5, color: COLORS.inkSoft, fontWeight: 700, borderBottom: `1px solid ${COLORS.line}`, position: "sticky", top: 0, background: "#FFFFFF" };
+  const td = { padding: "5px 8px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 12.5 };
+  const nChanges = diff ? diff.creates.length + diff.updates.length : 0;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }} onClick={stage === "saving" ? undefined : onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1040px, 100%)", background: "#FFFFFF", borderRadius: 14, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>Nhập phiếu QA/QC từ Excel</div>
+          {stage !== "saving" && <Button small variant="ghost" onClick={onClose}><X size={14} /> Đóng</Button>}
+        </div>
+        {(stage === "pick" || stage === "parsing") && (
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            <ol style={{ margin: "0 0 10px", paddingLeft: 18 }}>
+              <li>Tải <button type="button" onClick={onTemplate} style={{ border: "none", background: "none", padding: 0, color: COLORS.wood, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>file mẫu trống</button> hoặc bấm <b>Xuất Excel</b> (các phiếu đang lọc, có cột ID để sửa).</li>
+              <li>Mỗi dòng 1 lần kiểm. Bắt buộc: <b>Mã ERP</b>, <b>Ngày kiểm</b> (dd/mm/yyyy), <b>Kết quả</b> (Pass/Fail hoặc Đạt/Không đạt). <b>Nguồn</b>: Mẫu test / Mẫu ship / <b>Hàng Final</b> / Khác.</li>
+              <li><b>Mã ERP là khoá</b>: phiếu tự gắn vào Sample (mẫu mới nhất cùng mã) và hiện ở khối QA/QC của Sample + Master Products có mã đó.</li>
+              <li>Để trống ID = phiếu mới. Có ID = sửa phiếu đó (chỉ ghi ô thay đổi). Dòng trùng phiếu đã có tự bỏ qua (nhập lại file không bị nhân đôi).</li>
+            </ol>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, border: `1px dashed ${COLORS.wood}`, color: COLORS.wood, borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontWeight: 600 }}>
+              <Upload size={15} /> {stage === "parsing" ? `Đang đọc ${fileName}…` : "Chọn file .xlsx"}
+              <input type="file" accept=".xlsx" onChange={choose} style={{ display: "none" }} disabled={stage === "parsing"} />
+            </label>
+            {err && <div style={{ color: COLORS.red, marginTop: 8 }}>{err}</div>}
+          </div>
+        )}
+        {diff && stage !== "pick" && stage !== "parsing" && (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Badge>{fileName}</Badge><Badge>{diff.rowsRead} dòng đọc</Badge>
+              <Badge tone={diff.creates.length ? "green" : "neutral"}>{diff.creates.length} phiếu mới</Badge>
+              <Badge tone={diff.updates.length ? "wood" : "neutral"}>{diff.updates.length} phiếu sửa ({diff.changes.length} ô)</Badge>
+              {diff.skipped.length > 0 && <Badge tone="amber">{diff.skipped.length} dòng trùng bỏ qua</Badge>}
+              {diff.warnings.length > 0 && <Badge tone="amber">{diff.warnings.length} lưu ý</Badge>}
+              {diff.errors.length > 0 && <Badge tone="red">{diff.errors.length} lỗi (không nhập)</Badge>}
+              {diff.unknownHeaders.length > 0 && <Badge tone="amber">cột lạ bỏ qua: {diff.unknownHeaders.join(", ")}</Badge>}
+            </div>
+            {(diff.errors.length + diff.warnings.length + diff.skipped.length) > 0 && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, maxHeight: 160, overflowY: "auto" }}>
+                {diff.errors.map((x, i) => <div key={"e" + i} style={{ color: COLORS.red }}>Dòng {x.row}{x.erp ? ` · ${x.erp}` : ""}: {x.message}</div>)}
+                {diff.warnings.map((x, i) => <div key={"w" + i} style={{ color: "#92400E" }}>Dòng {x.row}{x.erp ? ` · ${x.erp}` : ""}: {x.message}</div>)}
+                {diff.skipped.map((x, i) => <div key={"s" + i} style={{ color: COLORS.inkSoft }}>Dòng {x.row} · {x.erp}: {x.message}</div>)}
+              </div>
+            )}
+            <div style={{ maxHeight: 360, overflowY: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr><th style={th}>Loại</th><th style={th}>Mã ERP</th><th style={th}>Sản phẩm liên kết</th><th style={th}>Nguồn · Ngày</th><th style={th}>Kết quả</th><th style={th}>Nội dung</th></tr></thead>
+                <tbody>
+                  {diff.creates.map((r) => (
+                    <tr key={r.id}><td style={td}><Badge tone="green">Mới</Badge></td><td style={{ ...td, fontWeight: 700 }}>{r.erpNo}</td>
+                      <td style={td}>{r.productName || <span style={{ color: COLORS.amber }}>chưa liên kết</span>}{r.sampleId ? <span style={{ color: COLORS.inkSoft }}> · {r.sampleId}</span> : ""}</td>
+                      <td style={td}>{r.source} · {r.inspectionDate.split("-").reverse().join("/")}</td><td style={td}><Badge tone={r.result === "Pass" ? "green" : "red"}>{r.result}</Badge> {r.status}</td>
+                      <td style={{ ...td, color: COLORS.inkSoft }}>{[r.stageLabel, r.defectCategory, r.defectDescription].filter(Boolean).join(" · ")}</td></tr>
+                  ))}
+                  {diff.changes.map((c, i) => (
+                    <tr key={"c" + i}><td style={td}><Badge tone="wood">Sửa</Badge></td><td style={{ ...td, fontWeight: 700 }}>{c.erp}</td><td style={td} colSpan={3}>{c.field}: <span style={{ color: COLORS.inkSoft }}>{String(c.from || "—")}</span> → <b>{String(c.to || "(xoá)")}</b></td><td style={td}></td></tr>
+                  ))}
+                </tbody>
+              </table>
+              {!nChanges && <div style={{ padding: 12, fontSize: 13, color: COLORS.inkSoft }}>Không có phiếu mới hoặc thay đổi nào.</div>}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {stage === "done"
+                ? <><Badge tone="green">Đã nhập {diff.creates.length} phiếu mới, sửa {diff.updates.length} phiếu</Badge><Button small onClick={onClose}>Xong</Button></>
+                : <><Button onClick={apply} disabled={!nChanges || stage === "saving"}>{stage === "saving" ? "Đang ghi…" : `Áp dụng (${diff.creates.length} mới · ${diff.updates.length} sửa)`}</Button>
+                    <Button variant="ghost" onClick={() => { setDiff(null); setStage("pick"); }} disabled={stage === "saving"}>Chọn file khác</Button></>}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

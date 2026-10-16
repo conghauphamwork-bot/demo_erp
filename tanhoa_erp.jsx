@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import QRCode from "qrcode";
-import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical, Package, ReceiptText } from "lucide-react";
+import { LayoutDashboard, Users, FileText, ShoppingCart, Boxes, CalendarDays, Palette, Truck, Plus, X, Image as ImageIcon, Search, ListTodo, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2, CheckSquare, Square, Move, QrCode as QrCodeIcon, Sparkles, Pencil, Table2, SlidersHorizontal, ChevronLeft, ChevronRight, MoreHorizontal, Factory, ShieldCheck, ShieldAlert, FlaskConical, Package, ReceiptText, Layers } from "lucide-react";
 import SampleTestTrackingView from "./SampleTestTrackingView.jsx";
 import QcView, { QcProductSection } from "./QcView.jsx";
 import ProductChangeHistory from "./ProductChangeHistory.jsx";
 import MasterProductsView from "./MasterProductsView.jsx";
 import PiView from "./PiView.jsx";
+import { RowHistoryButton } from "./RowHistory.jsx";
+import BulkChangeModal, { newGroupId } from "./BulkChangeModal.jsx";
 import { loadMasterData, saveMaster, saveChange as saveMasterChange, masterFromSample, LSX_TYPES } from "./masterApi";
-import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile, V58_OPTIONAL_COLUMNS } from "./supabaseRest";
+import { supabaseConfigured, loadWorkspace, upsertRows, deleteRow, deleteWhere, adapters, saveSampleChildren, saveJsonRecord, deleteJsonRecord, uploadStorageImage, signIn, signOut, getAuthSession, refreshAuthSession, getMyProfile, V58_OPTIONAL_COLUMNS, setAuditUser } from "./supabaseRest";
 
 // Public QR/Passport loader is kept local so this build remains compatible with older
 // supabaseRest.js copies that may still be deployed in Vercel.
@@ -759,7 +761,9 @@ function SectionHeading({ children }) {
   );
 }
 
-function Table({ columns, rows, onRowClick, empty }) {
+function Table({ columns: baseColumns, rows, onRowClick, empty, history }) {
+  // v59: history = (row) => ({ table, id, title }) adds a "Lịch sử sửa đổi" button to every row
+  const columns = history ? [...baseColumns, { key: "__history", label: "", align: "right", render: (row) => { const h = history(row); return h ? <RowHistoryButton table={h.table} rowId={h.id} title={h.title} /> : null; } }] : baseColumns;
   if (!rows.length) {
     return <div style={{ padding: "30px 0", textAlign: "center", color: COLORS.inkSoft, fontSize: 14 }}>{empty || "Nothing here yet."}</div>;
   }
@@ -1010,6 +1014,9 @@ function levelCan(level, module, action = "view") {
   const [massProductionTestSamples, setMassProductionTestSamples] = useState([]);
 
   const [materialLists, setMaterialLists] = useState({});
+
+  // v59: tell the audit log who is editing
+  useEffect(() => { setAuditUser(currentUser?.full_name || currentUser?.email || ""); }, [currentUser?.full_name, currentUser?.email]);
 
   // v58: Master Products + PI (separate tolerant loader — ERP still works if the v58 SQL is not run)
   const [master, setMaster] = useState({ loading: true, available: false, masterProducts: [], changes: [], pis: [], piLines: [], error: "" });
@@ -1657,6 +1664,8 @@ function levelCan(level, module, action = "view") {
         {view === "qc" && levelCan(currentUser?.level, "qc") && (
           <QcView
             samples={samples}
+            masterProducts={master.available ? master.masterProducts : []}
+            excel={{ download: downloadExcelWithEmbeddedImages, parse: parseXlsxWorkbook }}
             customers={customers}
             customerName={customerName}
             currentUser={currentUser}
@@ -2178,6 +2187,7 @@ function CustomersView({ customers, save, quotes, orders }) {
             },
           ]}
           rows={customers}
+          history={(c) => ({ table: "customers", id: c.id, title: c.name })}
         />
       </Panel>
     </div>
@@ -2302,6 +2312,7 @@ function QuotesView({ quotes, saveQuotes, customers, customerName, orders, saveO
             },
           ]}
           rows={quotes}
+          history={(q) => ({ table: "erp_records:quote", id: q.id, title: `Báo giá ${q.id}` })}
           empty="No quotes yet. Create one to start the sales pipeline."
         />
       </Panel>
@@ -2425,6 +2436,7 @@ function OrdersView({ orders, saveOrders, customers, customerName, samples }) {
             },
           ]}
           rows={orders}
+          history={(o) => ({ table: "erp_records:order", id: o.id, title: `Đơn hàng ${o.id}` })}
           empty="No orders yet. Convert a won quote, or add one directly."
         />
       </Panel>
@@ -3414,6 +3426,25 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState(null);
+  const [bulkChangeOpen, setBulkChangeOpen] = useState(false);
+  // v59: one customer change for many samples (each sample gets its own revision row, same group id)
+  const saveBulkSampleChange = async (rec, ids) => {
+    const groupId = newGroupId();
+    const idSet = new Set(ids);
+    const stamp = Date.now();
+    const next = samples.map((x, i) => (idSet.has(x.id) ? { ...x, revisions: [{ ...rec, id: `rev${stamp}-${i}`, groupId }, ...(x.revisions || [])] } : x));
+    saveSamples(next);
+    if (viewing && idSet.has(viewing.id)) setViewing(next.find((x) => x.id === viewing.id) || viewing);
+    return true;
+  };
+  const sampleGroupCount = (g) => samples.reduce((n, x) => n + (x.revisions || []).filter((r) => r.groupId === g).length, 0);
+  const sampleGroupStatus = (g, status, date) => {
+    const next = samples.map((x) => ((x.revisions || []).some((r) => r.groupId === g)
+      ? { ...x, revisions: x.revisions.map((r) => (r.groupId === g ? { ...r, status, processedDate: status === "Đã xử lý" ? (r.processedDate || date) : "" } : r)) }
+      : x));
+    saveSamples(next);
+    if (viewing) setViewing(next.find((x) => x.id === viewing.id) || viewing);
+  };
   // v58: opened from Master Products → "Sample gốc"
   useEffect(() => {
     if (!focusSampleId) return;
@@ -3647,7 +3678,7 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
           <div style={{ width: 46, height: 46, borderRadius: 15, background: "#EEF1F4", color: COLORS.woodDark, display: "grid", placeItems: "center", border: `1px solid ${COLORS.wood}66` }}><Boxes size={22} /></div>
           <div><h1 style={{ fontFamily: FONT_HEAD, fontSize: 30, letterSpacing: "-.8px", margin: 0 }}>Sample</h1><div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Mẫu đang phát triển đến khi khách accept → bấm “Chuyển sang Master Products” trong chi tiết mẫu.</div></div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Button small variant="subtle" onClick={() => setShowImport(true)}><Upload size={14} /> Import</Button><Button small variant="subtle" onClick={() => { setExportSampleId(null); setShowExport(true); }}><Download size={14} /> Export</Button><Button small variant="subtle" onClick={() => setShowAIDescription(true)}><Sparkles size={14} /> Upload product</Button><Button onClick={startNew}><Plus size={15} /> New sample</Button><Button small variant="subtle" onClick={() => setBulkChangeOpen(true)}><Layers size={14} /> Ghi thay đổi hàng loạt</Button></div>
       </div>
 
       {(() => {
@@ -3961,6 +3992,11 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
         </Panel>
       )}
 
+      {bulkChangeOpen && (
+        <BulkChangeModal ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }} title="Ghi thay đổi hàng loạt — Sample" tagLabel="Lọc theo LSX mẫu" folder="changes/sample-bulk"
+          items={samples.map((x) => ({ id: x.id, erp: x.erpNo || x.id, title: String(x.name || "").split("\n")[0], sub: `${x.id} · ${customerName(x.customerId)}`, tags: [x.manufacturingOrderNo].filter(Boolean) }))}
+          onSave={saveBulkSampleChange} onClose={() => setBulkChangeOpen(false)} />
+      )}
       {viewing && !showForm && (
         <SampleDetail
           sample={viewing}
@@ -3982,6 +4018,8 @@ function SamplesView({ samples, saveSamples, customers, customerName, productTyp
             saveSamples(samples.map((s) => (s.id === updated.id ? updated : s)));
             setViewing(updated);
           }}
+          groupCount={sampleGroupCount}
+          onGroupStatus={sampleGroupStatus}
           masterOf={masterProducts ? masterProducts.find((m) => m.sourceSampleId === viewing.id || (m.erpNo && m.erpNo === String(viewing.erpNo || "").trim())) || null : undefined}
           onTransferToMaster={onTransferToMaster ? async () => { const updated = await onTransferToMaster(viewing); if (updated) setViewing(updated); } : null}
           onOpenMaster={onOpenMaster}
@@ -4145,6 +4183,7 @@ function ProductTableView({ products, productTypeName, customerName, materialPre
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
                       <button type="button" title="Edit" onClick={() => onEdit(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><Pencil size={13} /></button>
                       <button type="button" title="QR" onClick={() => onShowQR(p)} style={{ border: `1px solid ${COLORS.line}`, background: "#FFFFFF", borderRadius: 7, width: 30, height: 30, cursor: "pointer" }}><QrCodeIcon size={13} /></button>
+                      <RowHistoryButton table="samples" rowId={p.id} title={`${p.id} · ${p.erpNo || ""} ${String(p.name || "").split("\n")[0]}`} />
                     </div>
                   </td>
                 </tr>
@@ -4890,7 +4929,7 @@ function DetailRow({ label, value }) {
   );
 }
 
-function SampleDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR, masterOf, onTransferToMaster, onOpenMaster }) {
+function SampleDetail({ sample: s, customerName, productTypeName, materialLists, materialPreps, saveMaterialPreps, allMaterialPreps, relatedTasks, allTasks, saveTasks, onEdit, onClose, onDelete, onSaveSample, onExport, onShowQR, masterOf, onTransferToMaster, onOpenMaster, groupCount, onGroupStatus }) {
   const { mainMaterials = [], finishes = [], woodSurface = [], fabricTypes = [], fabricColors = [], ropeTypes = [], ropeColors = [], cemboardColors = [] } = materialLists;
   const dims = [s.width, s.depth, s.height].filter((v) => v !== "" && v != null).length ? `${s.width || "—"} × ${s.depth || "—"} × ${s.height || "—"} mm` : "";
   const ot = sampleOnTime(s);
@@ -4965,7 +5004,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
   const addRevision = () => { if (!newRevision.changeReason.trim()) return; onSaveSample({ ...s, revisions: [{ ...newRevision, id: "rev" + Date.now() }, ...(s.revisions || [])] }); setNewRevision({ date: todayStr(), changeReason: "", photo: "", note: "" }); };
 
   return (
-    <Panel title={`${s.id} — ${s.name}`} action={<div style={{ display: "flex", gap: 8, alignItems: "center" }}>{ot !== null && (ot ? <Badge tone="green">On time</Badge> : <Badge tone="red">Late</Badge>)}{masterOf ? <Button small variant="subtle" onClick={() => onOpenMaster?.(masterOf.id)}><CheckCircle2 size={13} /> Master {masterOf.erpNo || masterOf.id}</Button> : (masterOf === null && onTransferToMaster ? <Button small onClick={onTransferToMaster}>Chuyển sang Master Products</Button> : null)}<Button small variant="subtle" onClick={onEdit}>Edit</Button><Button small variant="subtle" onClick={() => onShowQR?.(s.id)}><QrCodeIcon size={13} /> QR</Button><Button small variant="subtle" onClick={() => onExport(s.id)}><Download size={13} /> Export</Button><Button small variant="danger" onClick={onDelete}>Delete</Button><Button small variant="ghost" onClick={onClose}><X size={14} /> Close</Button></div>}>
+    <Panel title={`${s.id} — ${s.name}`} action={<div style={{ display: "flex", gap: 8, alignItems: "center" }}>{ot !== null && (ot ? <Badge tone="green">On time</Badge> : <Badge tone="red">Late</Badge>)}{masterOf ? <Button small variant="subtle" onClick={() => onOpenMaster?.(masterOf.id)}><CheckCircle2 size={13} /> Master {masterOf.erpNo || masterOf.id}</Button> : (masterOf === null && onTransferToMaster ? <Button small onClick={onTransferToMaster}>Chuyển sang Master Products</Button> : null)}<RowHistoryButton table="samples" rowId={s.id} title={`${s.id} · ${s.erpNo || ""}`} label="Lịch sử" /><Button small variant="subtle" onClick={onEdit}>Edit</Button><Button small variant="subtle" onClick={() => onShowQR?.(s.id)}><QrCodeIcon size={13} /> QR</Button><Button small variant="subtle" onClick={() => onExport(s.id)}><Download size={13} /> Export</Button><Button small variant="danger" onClick={onDelete}>Delete</Button><Button small variant="ghost" onClick={onClose}><X size={14} /> Close</Button></div>}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
         <div>
           <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 10, border: `1px solid ${COLORS.line}`, marginBottom: 14, background: COLORS.bg, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -5009,7 +5048,7 @@ function SampleDetail({ sample: s, customerName, productTypeName, materialLists,
 
       <QcProductSection ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }} sample={s} customerName={customerName} sampleStages={SAMPLE_STAGES} SectionHeading={SectionHeading} />
 
-      <ProductChangeHistory ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }} sample={s} onSaveSample={onSaveSample} SectionHeading={SectionHeading} />
+      <ProductChangeHistory ui={{ Button, Panel, Badge, Field, Input, Select, TextArea, Table, COLORS, FONT_HEAD }} sample={s} onSaveSample={onSaveSample} SectionHeading={SectionHeading} groupCount={groupCount} onGroupStatus={onGroupStatus} />
 
       <div style={{ marginTop: 20 }}><SectionHeading>Related tasks</SectionHeading><div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{relatedTasks.length === 0 && <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>No tasks linked to this product yet.</div>}{relatedTasks.map((t) => <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.bg, padding: "8px 10px", borderRadius: 8, fontSize: 13 }}><div><div style={{ fontWeight: 600 }}>{t.name}</div><div style={{ fontSize: 11.5, color: COLORS.inkSoft }}>{t.type || "Daily"} · {t.referencePerson || "—"}{t.deadline ? ` · ${t.deadline}` : ""}</div></div><button onClick={() => cycleTaskStatus(t)} style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}><Badge tone={taskStatusTone(t.status)}>{t.status}</Badge></button></div>)}<div style={{ display: "grid", gridTemplateColumns: "1fr 140px auto", gap: 8, marginTop: 4 }}><Input placeholder="Quick add a task for this product…" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} /><Input type="date" value={newTaskDeadline} onChange={(e) => setNewTaskDeadline(e.target.value)} /><Button small onClick={addRelatedTask}><Plus size={13} /> Add</Button></div></div></div>
     </Panel>
@@ -5704,7 +5743,7 @@ function MaterialsView({ materialLists, saveList }) {
           ...(supportsReferenceImage ? [{ key: "image", label: "Image", render: (m) => m.image ? <img src={m.image} alt="Reference" style={{ width: 42, height: 32, objectFit: "cover", borderRadius: 6, border: `1px solid ${COLORS.line}` }} /> : <span style={{ color: COLORS.inkSoft }}>No image</span> }] : []),
           { key: "name", label: "Name" },
           { key: "actions", label: "", align: "right", render: (m) => <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}><Button small variant="subtle" onClick={() => startEdit(m)}><Pencil size={13} /> Edit</Button><Button small variant="danger" onClick={() => remove(m.id)}><Trash2 size={13} /> Delete</Button></div> }
-        ]} rows={filtered} empty="Nothing added yet — import a material file or use the button above to add one." />
+        ]} rows={filtered} history={(m) => ({ table: { productTypes: "product_types", mainMaterials: "main_materials", finishes: "finishes", woodSurface: "wood_surface_treatments", fabricTypes: "fabric_types", fabricColors: "fabric_colors", ropeTypes: "rope_types", ropeColors: "rope_colors", cemboardColors: "cemboard_colors" }[activeTab], id: m.id, title: `${m.code || ""} ${m.name || ""}` })} empty="Nothing added yet — import a material file or use the button above to add one." />
       </Panel>
 
       {showImport && <MaterialImportModal tab={tab} existingList={list} onImport={handleImport} onClose={() => setShowImport(false)} />}
@@ -5929,6 +5968,7 @@ function TasksView({ tasks, saveTasks, samples, customers, customerName }) {
               },
             ]}
             rows={tasks}
+            history={(t) => ({ table: "tasks", id: t.id, title: t.name })}
             empty="No tasks yet — add one to start tracking your day-to-day follow-ups."
           />
         </Panel>
@@ -6134,6 +6174,7 @@ function ShippingView({ shipments, saveShipments, orders, customerName, customer
             },
           ]}
           rows={shipments}
+          history={(x) => ({ table: "erp_records:shipment", id: x.id, title: `Lô giao ${x.id}` })}
           empty="No shipments yet."
         />
       </Panel>
@@ -6603,6 +6644,7 @@ function ManufacturingOrdersView({
             },
           ]}
           rows={manufacturingOrders}
+          history={(m) => ({ table: "manufacturing_orders", id: m.id, title: `LSX ${m.moNo}` })}
           onRowClick={(m) => setOpenMoId(m.id)}
           empty="Chưa có Manufacturing Order nào."
         />
@@ -6696,6 +6738,7 @@ function ManufacturingOrdersView({
                 },
               ]}
               rows={linesForMo(openMo.id)}
+              history={(l) => ({ table: "mo_product_lines", id: l.id, title: `${openMo.moNo} · ${lineLabel(l)}` })}
               empty="Chưa có Product nào trong MO này."
             />
 
@@ -6754,6 +6797,7 @@ function ManufacturingOrdersView({
                 { key: "testResult", label: "Result", render: (t) => t.testResult ? <Badge tone={testResultTone(t.testResult)}>{t.testResult}</Badge> : "—" },
               ]}
               rows={testsForMo(openMo.id)}
+              history={(t) => ({ table: "mass_production_test_samples", id: t.id, title: `${openMo.moNo} · ${productName(t.productId)}` })}
               empty="Chưa có lần test nào cho MO này."
             />
           </div>

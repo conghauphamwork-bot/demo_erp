@@ -6,13 +6,15 @@
    UI atoms đến từ prop `ui` (không import tanhoa_erp.jsx → không vòng lặp).
 ------------------------------------------------------------------- */
 import React, { useEffect, useMemo, useState } from "react";
-import { Boxes, ArrowLeft, RefreshCw, Search, Image as ImageIcon, FlaskConical, ExternalLink, Plus } from "lucide-react";
-import { saveMaster, saveChange, deleteChange, lsxForMaster, pisForMaster, firstLine } from "./masterApi";
+import { Boxes, ArrowLeft, RefreshCw, Search, Image as ImageIcon, FlaskConical, ExternalLink, Plus, Layers } from "lucide-react";
+import { saveMaster, saveChange, saveChanges as saveChangeRows, deleteChange, lsxForMaster, pisForMaster, firstLine } from "./masterApi";
+import BulkChangeModal, { newGroupId } from "./BulkChangeModal.jsx";
 import { loadTestTracking } from "./sampleTestApi";
 import { computeTracking, todayIso } from "./sampleTestLogic";
 import { QcProductSection } from "./QcView.jsx";
 import ProductChangeHistory, { isChangeOpen } from "./ProductChangeHistory.jsx";
 import PhotoProof from "./PhotoProof.jsx";
+import { RowHistoryButton } from "./RowHistory.jsx";
 
 const fmt = (d) => { if (!d) return ""; const [y, m, day] = String(d).slice(0, 10).split("-"); return day ? `${day}/${m}/${String(y).slice(2)}` : d; };
 export const lsxTone = (t) => ({ "Mẫu": "teal", "Đại trà": "wood", "Thay đổi": "amber", "Điều chỉnh": "red" }[t] || "neutral");
@@ -49,6 +51,22 @@ export default function MasterProductsView({
   const [statusFilter, setStatusFilter] = useState("Active");
   const [openId, setOpenId] = useState("");
   const [tt, setTt] = useState({ available: false, trackings: [], steps: [], parts: [], tests: [], settings: null });
+  const [bulkOpen, setBulkOpen] = useState(false);
+  // v59: one customer change for many master products (each gets its own row, same group id)
+  const saveBulkChange = async (rec, ids) => {
+    const groupId = newGroupId();
+    const list = ids.map((id, i) => ({ ...rec, id: `MPC-${groupId}-${i}`, masterProductId: id, groupId }));
+    try { await saveChangeRows(list); }
+    catch (e) { alert("Ghi thay đổi hàng loạt thất bại: " + (e?.message || e)); return false; }
+    setMaster((x) => ({ ...x, changes: [...x.changes, ...list] }));
+    return true;
+  };
+  const bulkModal = bulkOpen && (
+    <BulkChangeModal ui={ui} title="Ghi thay đổi hàng loạt — Master Products" tagLabel="Lọc theo LSX" folder="changes/master-bulk"
+      items={master.masterProducts.filter((m) => m.status === "Active").map((m) => ({ id: m.id, erp: m.erpNo, title: m.description || firstLine(m.name), sub: customerName(m.customerId),
+        tags: lsxForMaster(m, { samples, mos: manufacturingOrders, moLines: moProductLines }).map((x) => x.moNo) }))}
+      onSave={saveBulkChange} onClose={() => setBulkOpen(false)} />
+  );
 
   useEffect(() => { if (focusId) { setOpenId(focusId); onFocusUsed?.(); } }, [focusId]);
   useEffect(() => { loadTestTracking().then((d) => d.available && setTt(d)).catch(() => {}); }, []);
@@ -78,7 +96,10 @@ export default function MasterProductsView({
           <div style={{ marginTop: 4, color: COLORS.inkSoft, fontSize: 13 }}>Sản phẩm khách đã accept · mỗi mã gom toàn bộ PI / PO / LSX / hàng mang đi test / QA-QC / thay đổi</div>
         </div>
       </div>
-      <Button variant="ghost" small onClick={reloadMaster}><RefreshCw size={14} /> Tải lại</Button>
+      <div style={{ display: "flex", gap: 8 }}>
+        {canEdit && master.available && <Button variant="subtle" small onClick={() => setBulkOpen(true)}><Layers size={14} /> Ghi thay đổi hàng loạt</Button>}
+        <Button variant="ghost" small onClick={reloadMaster}><RefreshCw size={14} /> Tải lại</Button>
+      </div>
     </div>
   );
 
@@ -89,6 +110,7 @@ export default function MasterProductsView({
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {header}
+        {bulkModal}
         <MasterDetail ui={ui} row={open} master={master} setMaster={setMaster} tt={tt} samples={samples} customers={customers} customerName={customerName}
           currentUser={currentUser} canEdit={canEdit} sampleStages={sampleStages} onBack={() => setOpenId("")}
           onOpenSample={onOpenSample} onNewTest={onNewTest} onOpenPi={onOpenPi} onGoto={onGoto} />
@@ -101,6 +123,7 @@ export default function MasterProductsView({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {header}
+      {bulkModal}
       <Panel>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
           <div style={{ position: "relative", flex: "1 1 260px" }}>
@@ -123,7 +146,7 @@ export default function MasterProductsView({
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={th}></th><th style={th}>Mã ERP</th><th style={th}>Mô tả</th><th style={th}>Khách</th>
-                <th style={th}>PI</th><th style={th}>PO</th><th style={th}>LSX</th><th style={th}>Mang đi test</th><th style={th}>Thay đổi chưa xử lý</th><th style={th}>Trạng thái</th>
+                <th style={th}>PI</th><th style={th}>PO</th><th style={th}>LSX</th><th style={th}>Mang đi test</th><th style={th}>Thay đổi chưa xử lý</th><th style={th}>Trạng thái</th><th style={th}></th>
               </tr></thead>
               <tbody>
                 {list.map(({ m, lsx, pi, poCount, tests, openChanges }) => (
@@ -138,6 +161,7 @@ export default function MasterProductsView({
                     <td style={td}>{tests.length || "—"}</td>
                     <td style={td}>{openChanges ? <Badge tone="amber">{openChanges}</Badge> : "—"}</td>
                     <td style={td}><Badge tone={m.status === "Active" ? "green" : "neutral"}>{m.status}</Badge></td>
+                    <td style={td}><RowHistoryButton table="master_products" rowId={m.id} title={`${m.erpNo || m.id} · ${m.description || ""}`} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -213,6 +237,7 @@ function MasterDetail({ ui, row, master, setMaster, tt, samples, customers, cust
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                <RowHistoryButton table="master_products" rowId={m.id} title={`${m.erpNo || m.id} · ${m.description || ""}`} label="Lịch sử" />
                 {sourceSample && <Button small variant="subtle" onClick={() => onOpenSample?.(sourceSample.id)}><ExternalLink size={13} /> Sample gốc {sourceSample.id}</Button>}
                 {canEdit && dirty && <Button small onClick={() => persist(draft)}>Lưu thông tin</Button>}
                 {canEdit && dirty && <Button small variant="ghost" onClick={() => setDraft(m)}>Huỷ sửa</Button>}
@@ -310,7 +335,13 @@ function MasterDetail({ ui, row, master, setMaster, tt, samples, customers, cust
 
       <Panel>
         <QcProductSection ui={ui} sample={qcSample} customerName={customerName} currentUser={currentUser} canEdit={canEdit} sampleStages={sampleStages} />
-        <ProductChangeHistory ui={ui} sample={changeHolder} canEdit={canEdit} onSaveSample={(x) => saveChanges(x.revisions || [])} />
+        <ProductChangeHistory ui={ui} sample={changeHolder} canEdit={canEdit} onSaveSample={(x) => saveChanges(x.revisions || [])}
+          groupCount={(g) => master.changes.filter((c) => c.groupId === g).length}
+          onGroupStatus={(g, status, date) => {
+            const upd = master.changes.filter((c) => c.groupId === g).map((c) => ({ ...c, status, processedDate: status === "Đã xử lý" ? (c.processedDate || date) : "" }));
+            setMaster((x) => ({ ...x, changes: x.changes.map((c) => upd.find((u) => u.id === c.id) || c) }));
+            saveChangeRows(upd).catch((e) => alert("Cập nhật trạng thái cả nhóm thất bại: " + (e?.message || e)));
+          }} />
       </Panel>
     </div>
   );

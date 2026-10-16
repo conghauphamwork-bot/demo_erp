@@ -15,6 +15,7 @@ import {
   loadTestTracking, saveTracking, deleteTracking, saveStepRows, savePart, deletePart, saveTest, deleteTest, saveTestSettings,
 } from "./sampleTestApi";
 import PhotoProof from "./PhotoProof.jsx";
+import { RowHistoryButton } from "./RowHistory.jsx";
 import { QcForm } from "./QcView.jsx";
 import { loadQc, saveQc, deleteQc } from "./qcApi";
 import { qcFieldsFromTest, qcIdForTest, mergeQcSettings } from "./qcLogic";
@@ -479,7 +480,7 @@ function TrackingList({ ui, entries, customers, customerName, filter, setFilter,
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
-                  {["", "Mã ERP · Sản phẩm", "Khách · LSX", "Trạng thái", missCode ? "Còn thiếu" : "Bước cần follow", "Hạn", "Lắp ráp", "Test gần nhất", "Dự kiến đi test"].map((h, i) => (
+                  {["", "Mã ERP · Sản phẩm", "Khách · LSX", "Trạng thái", missCode ? "Còn thiếu" : "Bước cần follow", "Hạn", "Lắp ráp", "Test gần nhất", "Dự kiến đi test", ""].map((h, i) => (
                     <th key={i} style={{ textAlign: "left", padding: "8px 10px", borderBottom: `2px solid ${COLORS.line}`, color: COLORS.inkSoft, fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -523,6 +524,7 @@ function TrackingList({ ui, entries, customers, customerName, filter, setFilter,
                         <div>{fmt(c.expectedSend) || "—"}</div>
                         {c.risk && <div style={{ fontSize: 11.5, color: c.riskDays > 0 ? COLORS.red : COLORS.green }}>{c.risk}{e.tracking.testDeadline ? ` (hạn ${fmt(e.tracking.testDeadline)})` : ""}</div>}
                       </td>
+                      <td style={{ padding: "8px 10px" }}><RowHistoryButton table="test_trackings" rowId={e.id} title={`${e.info.erpNo || ""} · ${e.tracking.lsxNo || ""}`} /></td>
                     </tr>
                   );
                 })}
@@ -1224,6 +1226,7 @@ function TrackingDetail({ ui, entry, settings, customerName, canEdit, canDelete,
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
                 {canEdit && masterAvailable && !masterOfT && <Button small variant="subtle" onClick={() => transferToMaster(entry)}>Liên kết Master Products</Button>}
                 {canEdit && !masterAvailable && !info.linked && canTransfer && <Button small variant="subtle" onClick={() => transferToMaster(entry)}>Chuyển sang Products</Button>}
+                <RowHistoryButton table="test_trackings" rowId={t.id} title={`${info.erpNo || ""} · ${t.lsxNo || ""}`} label="Lịch sử" />
                 {canEdit && <Button small variant="subtle" onClick={() => lockBaseline(entry)}><Lock size={13} /> Chốt KH gốc</Button>}
                 {canEdit && <Button small variant="subtle" onClick={() => patchTracking(t.id, { status: t.status === "Closed" ? "Active" : "Closed" })}>{t.status === "Closed" ? "Mở lại" : "Đóng theo dõi"}</Button>}
                 {canDelete && <Button small variant="danger" onClick={() => removeTracking(entry)}><Trash2 size={13} /> Xoá</Button>}

@@ -4,18 +4,18 @@
    ghi chú, ảnh, trạng thái Chưa xử lý / Đã xử lý + ngày xử lý. */
 import React, { useState } from "react";
 import { Plus, X, Pencil } from "lucide-react";
-import PhotoProof from "./PhotoProof.jsx";
+import FileAttach, { AttachmentList, allAttachments } from "./FileAttach.jsx";
 
 export const CHANGE_STATUSES = ["Chưa xử lý", "Đã xử lý"];
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (d) => { if (!d) return ""; const [y, m, day] = String(d).slice(0, 10).split("-"); return `${day}/${m}/${String(y).slice(2)}`; };
 export const isChangeOpen = (r) => (r.status || "Chưa xử lý") !== "Đã xử lý";
 
-export default function ProductChangeHistory({ ui, sample, onSaveSample, canEdit = true, SectionHeading }) {
+export default function ProductChangeHistory({ ui, sample, onSaveSample, canEdit = true, SectionHeading, groupCount = null, onGroupStatus = null }) {
   const { Button, Badge, Input, Select, TextArea, Field, COLORS } = ui;
   const list = sample.revisions || [];
   const [filter, setFilter] = useState("all");
-  const blank = { id: "", date: today(), requestedBy: "", changeReason: "", note: "", photo: "", status: "Chưa xử lý", processedDate: "" };
+  const blank = { id: "", date: today(), requestedBy: "", changeReason: "", note: "", photo: "", attachments: [], status: "Chưa xử lý", processedDate: "" };
   const [form, setForm] = useState(null);
   const open = list.filter(isChangeOpen).length;
   const rows = list
@@ -32,6 +32,12 @@ export default function ProductChangeHistory({ ui, sample, onSaveSample, canEdit
   };
   const toggle = (r) => {
     const done = isChangeOpen(r);
+    // v59: a change entered for many products at once → offer to update the whole group
+    const n = r.groupId && groupCount ? groupCount(r.groupId) : 0;
+    if (n > 1 && onGroupStatus && confirm(`Thay đổi này được ghi cho ${n} mã cùng lúc.\nOK = đổi trạng thái cho cả ${n} mã · Cancel = chỉ mã này`)) {
+      onGroupStatus(r.groupId, done ? "Đã xử lý" : "Chưa xử lý", done ? today() : "");
+      return;
+    }
     persist(list.map((x) => (x.id === r.id ? { ...x, status: done ? "Đã xử lý" : "Chưa xử lý", processedDate: done ? today() : "" } : x)));
   };
   const remove = (r) => { if (confirm("Xoá dòng lịch sử thay đổi này?")) persist(list.filter((x) => x.id !== r.id)); };
@@ -58,10 +64,11 @@ export default function ProductChangeHistory({ ui, sample, onSaveSample, canEdit
             <Field label="Ngày xử lý xong"><Input type="date" value={form.processedDate} disabled={form.status !== "Đã xử lý"} onChange={(e) => setForm({ ...form, processedDate: e.target.value })} /></Field>
           </div>
           <Field label="Nội dung thay đổi *"><TextArea rows={2} value={form.changeReason} onChange={(e) => setForm({ ...form, changeReason: e.target.value })} placeholder="VD: Đổi màu sơn từ TH-14 sang TH-12; tăng chiều cao chân +20mm" /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 160px", gap: 10 }}>
-            <Field label="Ghi chú / cách xử lý"><Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-            <Field label="Ảnh / tài liệu"><PhotoProof images={form.photo ? [form.photo] : []} max={1} folder={`samples/${sample.id}`} prefix="change" onChange={(imgs) => setForm({ ...form, photo: imgs[0] || "" })} /></Field>
-          </div>
+          <Field label="Ghi chú / cách xử lý"><Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+          <Field label="Ảnh / tài liệu (ảnh, PDF, Word, Excel…)">
+            <FileAttach files={allAttachments(form)} folder={`changes/${sample.id}`} prefix="change"
+              onChange={(list) => setForm({ ...form, attachments: list, photo: list.find((x) => /^image\//.test(x.type || "") || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(x.url))?.url || "" })} />
+          </Field>
           <div style={{ display: "flex", gap: 8 }}>
             <Button small onClick={submit}>{form.id ? "Lưu" : "Thêm vào lịch sử"}</Button>
             <Button small variant="ghost" onClick={() => setForm(null)}>Huỷ</Button>
@@ -74,12 +81,12 @@ export default function ProductChangeHistory({ ui, sample, onSaveSample, canEdit
           {rows.map((r) => {
             const openRow = isChangeOpen(r);
             return (
-              <div key={r.id} style={{ display: "grid", gridTemplateColumns: r.photo ? "64px minmax(0,1fr) auto" : "minmax(0,1fr) auto", gap: 12, alignItems: "start", background: openRow ? "#FFFBEB" : COLORS.bg, border: `1px solid ${openRow ? "#FDE68A" : "transparent"}`, borderRadius: 10, padding: "9px 11px" }}>
-                {r.photo && <a href={r.photo} target="_blank" rel="noreferrer"><img src={r.photo} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }} /></a>}
+              <div key={r.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "start", background: openRow ? "#FFFBEB" : COLORS.bg, border: `1px solid ${openRow ? "#FDE68A" : "transparent"}`, borderRadius: 10, padding: "9px 11px" }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: COLORS.inkSoft }}>{fmt(r.date)}{r.requestedBy ? ` · ${r.requestedBy}` : ""}</div>
+                  <div style={{ fontSize: 12, color: COLORS.inkSoft }}>{fmt(r.date)}{r.requestedBy ? ` · ${r.requestedBy}` : ""}{r.groupId && groupCount && groupCount(r.groupId) > 1 ? ` · áp dụng cho ${groupCount(r.groupId)} mã` : ""}</div>
                   <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: "pre-wrap" }}>{r.changeReason}</div>
                   {r.note && <div style={{ fontSize: 12.5, color: COLORS.inkSoft }}>{r.note}</div>}
+                  {allAttachments(r).length > 0 && <div style={{ marginTop: 6 }}><AttachmentList files={allAttachments(r)} size={44} /></div>}
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button type="button" disabled={!canEdit} onClick={() => toggle(r)} title={canEdit ? "Bấm để đổi trạng thái" : ""} style={{ border: "none", background: "transparent", padding: 0, cursor: canEdit ? "pointer" : "default" }}>

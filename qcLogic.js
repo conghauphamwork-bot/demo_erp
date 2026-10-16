@@ -1,7 +1,7 @@
 /* QA/QC — pure helpers (no React, no Supabase) */
 import { diffDays, todayIso } from "./sampleTestLogic.js";
 
-export const QC_SOURCES = ["Mẫu test", "Mẫu ship", "Khác"];
+export const QC_SOURCES = ["Mẫu test", "Mẫu ship", "Hàng Final", "Khác"];
 export const QC_RESULTS = ["Pass", "Fail"];
 export const QC_STATUSES = ["Mở", "Đang xử lý", "Đã xử lý", "Đạt"];
 export const DEFAULT_QC_SETTINGS = {

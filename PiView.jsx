@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { FileText, Plus, X, ArrowLeft, RefreshCw, Search, Trash2 } from "lucide-react";
 import { PI_STATUSES, savePi, deletePi, savePiLines, deletePiLine, firstLine, todayStr, piTotals } from "./masterApi";
 import { MissingSqlPanel, piTone, lsxTone } from "./MasterProductsView.jsx";
+import { RowHistoryButton } from "./RowHistory.jsx";
 
 const fmt = (d) => { if (!d) return ""; const [y, m, day] = String(d).slice(0, 10).split("-"); return day ? `${day}/${m}/${String(y).slice(2)}` : d; };
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `pi-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -86,7 +87,7 @@ export default function PiView({ ui, master, setMaster, reloadMaster, manufactur
         </div>
         {!rows.length ? <div style={{ color: COLORS.inkSoft, fontSize: 13.5 }}>Chưa có PI. Bấm <b>PI mới</b>.</div> : (
           <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><th style={th}>Số PI</th><th style={th}>Khách</th><th style={th}>Ngày PI</th><th style={th}>Trạng thái</th><th style={th}>Số PO</th><th style={th}>Ngày PO</th><th style={th}>Ngày ship</th><th style={th}>Mã</th><th style={th}>Tổng SL</th><th style={th}>Tổng tiền</th><th style={th}>LSX</th></tr></thead>
+            <thead><tr><th style={th}>Số PI</th><th style={th}>Khách</th><th style={th}>Ngày PI</th><th style={th}>Trạng thái</th><th style={th}>Số PO</th><th style={th}>Ngày PO</th><th style={th}>Ngày ship</th><th style={th}>Mã</th><th style={th}>Tổng SL</th><th style={th}>Tổng tiền</th><th style={th}>LSX</th><th style={th}></th></tr></thead>
             <tbody>{list.map(({ p, lines, mos, qty, amount }) => (
               <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => setEditing({ pi: { ...p }, lines: lines.slice().sort((a, b) => a.sortOrder - b.sortOrder), isNew: false })}>
                 <td style={{ ...td, fontWeight: 700 }}>{p.piNo}</td><td style={td}>{customerName(p.customerId)}</td><td style={td}>{fmt(p.piDate)}</td>
@@ -95,6 +96,7 @@ export default function PiView({ ui, master, setMaster, reloadMaster, manufactur
                 <td style={td}>{fmt(p.poDate)}</td><td style={td}>{fmt(p.shipDate)}</td>
                 <td style={td}>{lines.length}</td><td style={td}>{money(qty)}</td><td style={td}>{money(amount)} {p.currency}</td>
                 <td style={td}>{mos.map((m) => m.moNo).join(", ") || "—"}</td>
+                <td style={td}><RowHistoryButton table="proforma_invoices" rowId={p.id} title={`PI ${p.piNo}`} /></td>
               </tr>
             ))}</tbody>
           </table></div>
@@ -163,7 +165,7 @@ function PiForm({ ui, initial, master, setMaster, customers, customerName, mos, 
   const td = { padding: "6px 8px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 12.5, verticalAlign: "middle" };
   const cell = { padding: "5px 7px", fontSize: 12.5 };
   return (
-    <Panel title={initial.isNew ? "PI mới" : `PI ${initial.pi.piNo}`} action={<Button small variant="ghost" onClick={onClose}><ArrowLeft size={14} /> Danh sách</Button>}>
+    <Panel title={initial.isNew ? "PI mới" : `PI ${initial.pi.piNo}`} action={<div style={{ display: "flex", gap: 8 }}>{!initial.isNew && <RowHistoryButton table="proforma_invoices" rowId={pi.id} title={`PI ${initial.pi.piNo}`} label="Lịch sử" />}<Button small variant="ghost" onClick={onClose}><ArrowLeft size={14} /> Danh sách</Button></div>}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12 }}>
           <Field label="Số PI *"><Input value={pi.piNo} disabled={ro} onChange={(e) => setPi({ ...pi, piNo: e.target.value })} placeholder="PI-SKL-2026-015" /></Field>

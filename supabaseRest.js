@@ -46,6 +46,11 @@ function assertConfigured() {
   }
 }
 
+// v59: who is editing — sent with every data request so the audit trigger can log it.
+// x-client-info is the header supabase-js itself uses (allowed by Supabase CORS); value is URL-encoded ASCII.
+let auditUser = "";
+export function setAuditUser(name) { auditUser = String(name || "").trim(); }
+
 async function request(path, options = {}) {
   assertConfigured();
   // NOTE (v55 auth fix): data-table requests keep using the anon key exactly as before
@@ -56,6 +61,7 @@ async function request(path, options = {}) {
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     "Content-Type": "application/json",
+    "x-client-info": `tanhoa-erp/59${auditUser ? ` user=${encodeURIComponent(auditUser)}` : ""}`,
     ...options.headers,
   };
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...options, headers });
@@ -74,6 +80,39 @@ export async function selectAll(table) {
   return request(`${table}?select=*`, {
     headers: { Range: "0-9999", Prefer: "count=exact" },
   });
+}
+
+/** v59: raw PostgREST GET (path incl. query string), e.g. "erp_audit_log?row_id=eq.X". */
+export async function selectPath(path, max = 1000) {
+  return request(path, { headers: { Range: `0-${max - 1}` } });
+}
+
+/** v59: upload any document (pdf / word / excel / image …) to the existing bucket.
+    Kept separate from uploadStorageImage, which stays unchanged. */
+export async function uploadStorageFile(file, folder, prefix = "file") {
+  assertConfigured();
+  if (!file) throw new Error("Chọn một file.");
+  if (file.size > 20 * 1024 * 1024) throw new Error("File lớn hơn 20 MB.");
+  const extension = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
+  const safeFolder = String(folder || "general").replace(/[^a-zA-Z0-9_\/-]/g, "_");
+  const safePrefix = String(prefix || "file").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const path = `${safeFolder}/${safePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storageObjectPath(path)}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "x-upsert": "false", "cache-control": "3600",
+      "content-type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let message = text;
+    try { message = JSON.parse(text)?.message || JSON.parse(text)?.error || text; } catch (_) {}
+    const hint = /mime|type/i.test(message) ? " — kho ảnh đang chỉ nhận ảnh: chạy dòng SQL mục 4 trong file v59 để cho phép PDF/Word/Excel." : "";
+    throw new Error(`Supabase Storage ${res.status}: ${message}${hint}`);
+  }
+  return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${storageObjectPath(path)}`;
 }
 
 export async function upsertRows(table, rows) {
@@ -298,7 +337,7 @@ function colorMasterToApp(r) { return { id: r.id, code: r.code || "", name: r.na
 function taskToApp(r) { return { id: r.id, name: r.name || "", type: r.type || "Daily", description: r.description || "", referencePerson: r.reference_person || "", deadline: r.deadline || "", status: r.status || "To Do", priority: r.priority || "", sampleId: r.sample_id || "", note: r.note || "", image: r.image_url || "" }; }
 function sampleComponentsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, materialName: r.component_name || "", qty: r.qty ?? 1, startDate: r.start_date || "", dueDate: r.target_date || "", status: r.status || "Waiting", photo: r.proof_image_url || "" })); }
 function sampleNotesToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, text: r.note || "", createdAt: r.created_at || new Date().toISOString() })); }
-function sampleRevisionsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, date: r.revision_date || "", changeReason: r.change_reason || "", photo: r.photo_url || "", note: r.note || "", status: r.status || "Chưa xử lý", processedDate: r.processed_date || "", requestedBy: r.requested_by || "" })); }
+function sampleRevisionsToApp(rows) { return rows.map((r) => ({ id: r.id, sampleId: r.sample_id, date: r.revision_date || "", changeReason: r.change_reason || "", photo: r.photo_url || "", note: r.note || "", status: r.status || "Chưa xử lý", processedDate: r.processed_date || "", requestedBy: r.requested_by || "", attachments: Array.isArray(r.attachments) ? r.attachments : [], groupId: r.group_id || "" })); }
 
 function sampleToApp(r) {
   return {
@@ -403,20 +442,27 @@ export async function saveSampleChildren(sample) {
   const notes = (sample.noteHistory || []).map((n) => ({ id: n.id, sample_id: sample.id, note: n.text || "", created_at: n.createdAt || new Date().toISOString() }));
   const legacyRevisions = (sample.revisions || []).map((r) => ({ id: r.id, sample_id: sample.id, revision_date: r.date || null, change_reason: r.changeReason || "", photo_url: r.photo || null, note: r.note || null }));
   // v57: customer change history adds status / processed_date / requested_by.
-  const revisions = legacyRevisions.map((row, i) => {
+  const v57Revisions = legacyRevisions.map((row, i) => {
     const r = sample.revisions[i];
     return { ...row, status: r.status || "Chưa xử lý", processed_date: r.processedDate || null, requested_by: r.requestedBy || null };
+  });
+  // v59: several attachments + bulk group id
+  const revisions = v57Revisions.map((row, i) => {
+    const r = sample.revisions[i];
+    return { ...row, attachments: Array.isArray(r.attachments) ? r.attachments : [], group_id: r.groupId || null };
   });
   await deleteWhere("sample_notes", "sample_id", sample.id);
   await deleteWhere("sample_revisions", "sample_id", sample.id);
   await upsertRows("sample_notes", notes);
+  // Newest columns first; if an SQL file has not been run yet (PGRST204 unknown column), fall back step by step
+  // so revision rows (already deleted above) are never lost.
+  const unknownColumn = (err) => /PGRST204|column/i.test(String(err?.message || err));
   try {
     await upsertRows("sample_revisions", revisions);
   } catch (err) {
-    // v57 SQL not run yet → the new columns do not exist. Fall back to the old
-    // columns so revision rows (already deleted above) are never lost.
-    if (/PGRST204|status|processed_date|requested_by/i.test(String(err?.message || err))) await upsertRows("sample_revisions", legacyRevisions);
-    else throw err;
+    if (!unknownColumn(err)) throw err;
+    try { await upsertRows("sample_revisions", v57Revisions); }
+    catch (err2) { if (unknownColumn(err2)) await upsertRows("sample_revisions", legacyRevisions); else throw err2; }
   }
 }
 

@@ -45,6 +45,7 @@ export function changeToApp(r) {
     id: r.id, masterProductId: r.master_product_id, date: r.change_date || "", requestedBy: r.requested_by || "",
     changeReason: r.content || "", note: r.note || "", photo: r.photo_url || "", status: r.status || "Chưa xử lý",
     processedDate: r.processed_date || "", createdAt: r.created_at || "",
+    attachments: Array.isArray(r.attachments) ? r.attachments : [], groupId: r.group_id || "",
   };
 }
 function changeToRow(x) {
@@ -52,6 +53,7 @@ function changeToRow(x) {
     id: x.id, master_product_id: x.masterProductId, change_date: nz(x.date), requested_by: nz(x.requestedBy),
     content: x.changeReason || "", note: nz(x.note), photo_url: nz(x.photo), status: x.status || "Chưa xử lý",
     processed_date: x.status === "Đã xử lý" ? nz(x.processedDate) : null,
+    attachments: Array.isArray(x.attachments) ? x.attachments : [], group_id: nz(x.groupId),
   };
 }
 
@@ -101,7 +103,16 @@ export async function loadMasterData() {
 
 export const saveMaster = (m) => upsertRows("master_products", [masterToRow(m)]);
 export const deleteMaster = (id) => deleteRow("master_products", id);
-export const saveChange = (c) => upsertRows("master_product_changes", [changeToRow(c)]);
+// v59 columns (attachments, group_id) are dropped and retried if the v59 SQL has not been run yet
+export const saveChanges = async (list) => {
+  const rows = list.map(changeToRow);
+  try { await upsertRows("master_product_changes", rows); }
+  catch (err) {
+    if (!/PGRST204|column/i.test(String(err?.message || err))) throw err;
+    await upsertRows("master_product_changes", rows.map(({ attachments, group_id, ...rest }) => rest));
+  }
+};
+export const saveChange = (c) => saveChanges([c]);
 export const deleteChange = (id) => deleteRow("master_product_changes", id);
 export const savePi = (p) => upsertRows("proforma_invoices", [piToRow(p)]);
 export const deletePi = (id) => deleteRow("proforma_invoices", id);

@@ -50,5 +50,7 @@ export async function loadQc() {
 }
 
 export const saveQc = (rec) => upsertRows("qc_records", [qcToRow(rec)]);
+/** v59: many full records at once (same keys on every row — required by PostgREST batch upsert). */
+export async function saveQcMany(list) { for (let i = 0; i < list.length; i += 200) await upsertRows("qc_records", list.slice(i, i + 200).map(qcToRow)); }
 export const deleteQc = (id) => deleteRow("qc_records", id);
 export const saveQcSettings = (s) => saveJsonRecord("qc_settings", { ...s, id: "qc_settings_default" });
